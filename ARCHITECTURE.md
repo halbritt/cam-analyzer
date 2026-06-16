@@ -82,16 +82,37 @@ See [`docs/reference/ubiquitous-language.md`](docs/reference/ubiquitous-language
 for the canonical definitions and [`docs/explanation/domain-driven-design.md`](docs/explanation/domain-driven-design.md)
 for the aggregate-root / value-object framing.
 
-## What this design deliberately does *not* settle
+## Round 2 — resolved (the build plan)
 
-Carried into round 2 as open (not failures — open):
+Round 2 (`cam_profile_architecture_r2`,
+[`docs/design/round2/IDEATION_SYNTHESIS.md`](docs/design/round2/IDEATION_SYNTHESIS.md))
+took the pillars above as settled and resolved the two questions round 1 left
+open, under one rule: **a value — or a verdict — may leave the boundary only if
+its fitness is proven; the instant it can't be, the boundary says so loudly.**
+Build order (each pick sits on the prior):
 
-- How to make the provenance-carrying path *strictly more convenient* than bare
-  floats, so the guarantee is un-strippable in practice, not just in the types
-  (the `.magnitude` "laundry utility" escape hatch — flagged by all three models).
-- What `CamProfile` owes a consumer when the analysis verdict is a **cliff
-  function** of the profile (PTV contact, spring float): "swap without code change"
-  must not be oversold as "swap without changing the verdict."
+1. **`ProvFloat`** (resolves ergonomics-as-integrity, D012) — a `float` *subclass*
+   carrying one `Provenance` stamp. Refines Pillar A: there is no `.magnitude` field
+   to strip, arithmetic propagates the lattice-`min` stamp, and the only exit is
+   `float(x)` — grep-able and lint-flagged. Follow-on `ProvArray` (D017) covers NumPy,
+   where `np.asarray` silently drops a subclass.
+2. **Derivative-capability matrix + Nyquist gate** (D014) — `velocity/acceleration/
+   jerk_at` answer only where sample density supports that order, else return a
+   structured `Refusal`. Closes Pillar B's "smooth half-sine emits authoritative jerk"
+   failure mode.
+3. **Bracketed verdict-agreement** (resolves honesty-under-discontinuity, D013) — run
+   cliff analyses (PTV, spring float) on the earliest- and latest-plausible curves from
+   the card's tolerances and publish only whether the *verdict* agrees; a flip emits
+   `UNDECIDABLE FROM CAM CARD`, never a number. The round-1 "swap ≠ verdict-stable" trap
+   honored by construction.
+
+★ **The cliff is in the policy, not the curve** (D015): a named **threshold owner**
+(*where* safe becomes unsafe) is separated from the **curve owner** (*what* the lift is),
+so a flipped verdict names *whose* threshold moved — making the `UNDECIDABLE`
+accountable. The runner-up wiring (`Answer | Refusal` at every safety-facing call, D016),
+the round-2 rejected traps, and the value-of-information wildcard (D018) are in the
+[round-2 synthesis](docs/design/round2/IDEATION_SYNTHESIS.md) and the
+[decision log](docs/decisions/decision-log.md).
 
 ## Where to go deeper
 
