@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cam-analyzer"
+version = "0.0.0"
+description = "Camshaft analysis toolkit built around a source-agnostic, provenance-carrying CamProfile boundary."
+readme = "README.md"
+requires-python = ">=3.11"
+# Runtime deps are intentionally empty in the skeleton. NumPy enters at the
+# profile/operator layer when the numerics are implemented; analysis modules
+# must still import only cam_analyzer.profile (C1).
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "mypy>=1.8", "ruff>=0.4", "import-linter>=2.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+# Pillar A relies on strict typing to make mislabeling unconstructable.
+strict = true
+files = ["src/cam_analyzer"]
+
+# Declarative form of the C1 boundary (D001/D007). The always-on guard is
+# tests/test_architecture_boundary.py; this contract documents the same rule for
+# the `lint-imports` tool once dependencies are installed.
+[tool.importlinter]
+root_packages = ["cam_analyzer"]
+
+[[tool.importlinter.contracts]]
+name = "Analysis depends only on the CamProfile boundary (C1)"
+type = "forbidden"
+source_modules = ["cam_analyzer.analysis"]
+forbidden_modules = ["cam_analyzer.sources"]
