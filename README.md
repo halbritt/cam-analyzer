@@ -9,10 +9,12 @@ Yamaha WR250R, DOHC 4-valve) and must survive the arrival of richer data sources
 — measured dial-indicator lift, Cam Doctor exports, scanned lobe coordinates,
 full valvetrain-dynamics models — **without changing a line of analysis code**.
 
-> Status: **architecture / DDD skeleton.** The domain model and boundary are
-> designed (see [Provenance](#provenance)); the implementation is scaffolding.
-> This repo currently holds the design, the decision record, and a typed package
-> skeleton that structurally enforces the boundary — not a finished analyzer.
+> Status: **architecture / DDD skeleton.** Two divergent-ideation rounds are
+> complete: round 1 settled the boundary skeleton (Pillars A/B/C + conformance D),
+> round 2 resolved its two open questions into a concrete build plan
+> ([Round 2](#round-2--the-chosen-build-plan)). This repo currently holds the design,
+> the decision record, and a typed package skeleton that structurally enforces the
+> boundary — not a finished analyzer.
 
 ## What It Does
 
@@ -91,6 +93,49 @@ conformance discipline that keeps them honest — see
 - **D · Conformance by adversary corpus.** The durable asset is the frozen suite
   of traps a profile must refuse; it turns C1/C3/C4 into tests.
 
+## Round 2 — the chosen build plan
+
+A second run (`cam_profile_architecture_r2`) took the round-1 skeleton as settled
+and resolved its two open questions. The operator-facing result
+([`docs/design/round2/IDEATION_SYNTHESIS.md`](docs/design/round2/IDEATION_SYNTHESIS.md))
+sharpens the design into one rule and a build order:
+
+> **A value — or a verdict — may leave the `CamProfile` boundary only if its
+> fitness is proven; the instant it can't be, the boundary says so loudly.**
+
+Build in this order — each pick answers one open question and sits on the prior:
+
+1. **`ProvFloat` — the honest value *is* the convenient value** (ergonomics-as-integrity).
+   Every query returns a `float` *subclass* carrying one `Provenance` stamp. There is no
+   `.magnitude` field to strip; arithmetic propagates the lattice-`min` stamp; the sole
+   exit is `float(x)` — ugly, grep-able, lint-flagged. This *refines* Pillar A: the
+   round-1 `Quantity` wrapper becomes a stamped scalar, so the lie can never be cheaper
+   than the truth. Mandatory follow-on: `ProvArray` for NumPy, where `np.asarray`
+   silently drops a subclass.
+2. **Derivative-capability matrix + Nyquist.** Before `velocity/acceleration/jerk_at`
+   answers, check whether the data supports that derivative order: pass → a stamped
+   value, fail → a structured `Refusal{requested_order, max_supported, reason, remedy}`.
+   A sparse half-sine cam-card backing therefore cannot emit authoritative jerk fiction.
+3. **Bracketed verdict-agreement** (honesty-under-discontinuity). For cliff functions
+   (PTV contact, spring float) build the earliest- and latest-plausible curves from the
+   card's own tolerances, run the identical analysis on both, and publish only whether
+   the *verdict* agrees; a flip emits **`UNDECIDABLE FROM CAM CARD`**, never a number.
+   This is C4/D009 honored by construction.
+
+★ **Non-obvious pick — separate the *threshold owner* from the *curve owner*.** The cliff
+lives in the policy, not the curve: a named threshold policy owns *where safe becomes
+unsafe*, distinct from whoever owns the lift curve — so when a verdict flips you learn
+*whose threshold* flipped it. It is what makes pick 3's `UNDECIDABLE` accountable.
+
+**Wildcard (a future round):** when a verdict bracket straddles the cliff, have the
+profile emit the single cheapest measurement that would collapse it — turning "we don't
+know" into a ranked measurement work order.
+
+These are the latest design direction, not yet committed code. The decision log tracks
+them as the resolution of the two open questions ([D012/D013](docs/decisions/decision-log.md)),
+and `src/cam_analyzer/quantity.py` still implements the round-1 `Quantity` form pending
+the `ProvFloat` refinement.
+
 ## Repository Layout
 
 ```
@@ -133,16 +178,18 @@ structure are real; the numerics are not yet written.
 
 ## Provenance
 
-This architecture was produced by a multi-model divergent-ideation run
-(`cam_profile_architecture`) under [striatum](https://github.com/halbritt/striatum):
-five branch frames diverged on the boundary problem, and a synthesis pass
-distilled the pillars above.
+This architecture was produced by two multi-model divergent-ideation runs
+(`cam_profile_architecture`, `_r2`) under [striatum](https://github.com/halbritt/striatum):
+branch frames diverged on the boundary problem, and synthesis passes distilled the
+pillars and the build plan above.
 
-- Design seed: [`docs/design/ROUND1_SYNTHESIS.md`](docs/design/ROUND1_SYNTHESIS.md)
-- Problem framing: [`docs/design/PROBLEM_BRIEF.md`](docs/design/PROBLEM_BRIEF.md)
-- Branch ideas: [`docs/design/branches/`](docs/design/branches/)
-- Process audit of the run: [`CAM_ANALYZER_RUN_RETROSPECTIVE_CAM_PROFILE_ARCHITECTURE_0D48EDE6_CLAUDE_OPUS_4_8_2026-06-16.md`](CAM_ANALYZER_RUN_RETROSPECTIVE_CAM_PROFILE_ARCHITECTURE_0D48EDE6_CLAUDE_OPUS_4_8_2026-06-16.md)
+- Round 1 — problem framing: [`docs/design/PROBLEM_BRIEF.md`](docs/design/PROBLEM_BRIEF.md)
+- Round 1 — synthesis (the pillars): [`docs/design/ROUND1_SYNTHESIS.md`](docs/design/ROUND1_SYNTHESIS.md)
+- Round 1 — branch ideas: [`docs/design/branches/`](docs/design/branches/)
+- Round 2 — build plan: [`docs/design/round2/IDEATION_SYNTHESIS.md`](docs/design/round2/IDEATION_SYNTHESIS.md) · [`CONVERGENCE.md`](docs/design/round2/CONVERGENCE.md) · [branches](docs/design/round2/branches/) · [deepened picks](docs/design/round2/deepened/)
+- Process audit of the round-1 run: [`CAM_ANALYZER_RUN_RETROSPECTIVE_CAM_PROFILE_ARCHITECTURE_0D48EDE6_CLAUDE_OPUS_4_8_2026-06-16.md`](CAM_ANALYZER_RUN_RETROSPECTIVE_CAM_PROFILE_ARCHITECTURE_0D48EDE6_CLAUDE_OPUS_4_8_2026-06-16.md)
 
-The round-1 synthesis is explicitly a *seed*, not a frozen decision; round 2 is
-still ideating on the two unresolved questions (ergonomics-as-integrity, honesty
-under discontinuity). The decision log marks which parts are `accepted` vs `proposed`.
+Both rounds are syntheses, not frozen decisions: round 1 settled the skeleton
+(Pillars A/B/C + the conformance discipline D); round 2 resolved the two open
+questions into the build plan above. The decision log marks which parts are
+`accepted` vs `proposed`.
