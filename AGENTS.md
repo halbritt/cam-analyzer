@@ -59,6 +59,11 @@ and ignored live scratch under `.striatum/`.
   current task explicitly asks to run or modify a workflow.
 - Do not commit `.striatum/`, caches, transcripts, lane scratch, private
   diagnostics, or generated runtime state.
+- If the user says "you're an operator" or starts operator-style Striatum work,
+  run `striatum operator bootstrap --markdown` first from the repository root
+  and follow the packet's `next_actions` and `reading_plan`. If bootstrap or
+  doctor reports problems, surface them instead of guessing from repository
+  files alone.
 - If you are actually running inside a Striatum workflow, follow the workflow
   packet, write-scope, artifact, and state-transition instructions from that
   packet. Do not advance workflow state by editing repo files directly unless
