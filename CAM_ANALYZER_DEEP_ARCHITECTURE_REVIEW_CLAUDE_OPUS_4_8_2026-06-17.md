@@ -14,6 +14,8 @@ Read the headline precisely, because the project deserves precision. The **centr
 
 `stated` / `actual` / `mine` are labeled throughout and never blurred.
 
+> **Addendum added 2026-06-17 — read this as a *lane* report.** The maintainer has since confirmed cam-analyzer is a *test article* for an autonomous-agent production lane (striatum), not the product. That re-targets this entire review: the body below is a correct judgment of *cam-analyzer-as-CLI*, but the lane is the right unit of analysis. **See the [Addendum at the end](#addendum--2026-06-17--read-as-a-lane-instance) first** — it relocates these findings and is the load-bearing lens.
+
 ---
 
 ## B. Files reviewed / files skipped
@@ -176,3 +178,39 @@ Only changes I would personally make. Smallest viable change preferred; deletion
 3. **Is the striatum design-process itself a product you're developing** (hence the heavy ideation/operator tooling in-repo), or is cam-analyzer the product and striatum just the means? Your answer decides whether `docs/operator/**` belongs here at all.
 4. **Was D013 consciously deferred, or do you believe it's implemented?** The docs say accepted; the code says absent. I need to know which to trust before calling it under-build vs. doc drift.
 5. **Do you run `cam-analyze` as the installed console script or as `python -m cam_analyzer`?** The packaged entry point was stale/absent in my environment until `pip install -e .`; if the console script is your real interface, its freshness matters.
+
+---
+
+## Addendum — 2026-06-17 — Read as a lane instance
+
+After this review was first committed, the maintainer supplied the missing frame: **cam-analyzer is not the product.** It is a *test article* for an autonomous-agent production lane (striatum, `~/git/striatum/`) whose job is to take a spec and produce a working product end-to-end. The CamProfile CLI is the substrate the lane operated on. This answers Open Questions 1 and 3, and it re-targets everything above — the body of this review is a correct judgment of *cam-analyzer-as-CLI*, but that is the wrong unit of analysis. Re-read it as a quality report on **the lane**.
+
+### What changes
+
+**Dissolves** (was overhead on a CLI; *is* the lane's actual product):
+- The 3,482-vs-2,389 doc-to-code ratio (§C row 18, lens 1). A pipeline whose deliverables *are* the RFC, ADRs, syntheses, and retrospective is supposed to emit more prose than code. That is yield, not bloat.
+- `docs/operator/**` (1,163 LOC striatum config; §C "worst repo over-engineering"). Not exhaust in the product repo — it is the lane's source, correctly co-located with the run it produced.
+- Two divergent-ideation rounds for a small tool (lens 1). That cost is R&D on the pipeline, amortized across every future product, not charged to this one.
+
+**Sharpens** (was a code nit; *is now a lane-reliability defect* — these are the durable findings):
+- **Documentation outruns implementation, systematically.** D013 "bracketed verdict-agreement" is marked *accepted/implemented* in `decision-log.md:49` but absent from `analysis/` (S2). RFC 0001 Pillar D (`unsafe_strip`, CAM001/CAM002 rules, `ProvArray`) is described as load-bearing but unimplemented (S6). C3 "unconstructable" (S4) and Pillar B "inconsistent derivatives unconstructable" (S3) overstate what the code enforces. *As CLI bugs these are small; as lane output they are one defect with one cause:* the doc-writing stages are more confident than the build stages delivered, and **nothing in the lane reconciles the two.**
+- **No stage enforces the invariants the lane built** (S1). The C1/C3/C6 guards run only on a manual `pytest`. A lane shipping products autonomously must wire each product's own enforcement, or every product it emits carries paper guarantees.
+- **The lane accretes and never subtracts.** ~450 LOC of dead/speculative source with no caller (§C rows 11, 12, 17). Builders add; no stage prunes.
+
+### The mirror (why this test article is unusually diagnostic)
+
+cam-analyzer's entire subject is honest provenance — *never pass an inferred value off as a measured one.* Building it, the lane passed off **"designed" as "implemented"** (D013), **"considered" as "delivered"** (RFC Pillar D), and **fabricated a frontier-model attribution** in `ROUND1_SYNTHESIS.md` (the retrospective caught it; nobody patched the synthesis). The lane committed, at the meta level, exactly the sin the product forbids at the object level. The defects are not scattered — they cluster on the *honesty* axis. One run already localizes the lane's weakest dimension, and it is the same one its output is meant to be strongest at.
+
+### Lane verdict
+
+**End-to-end: demonstrably yes** — spec → typed, tested, boundary-enforced, end-to-end-running deliverable, in a single pass. A real achievement; the happy path works. **End-to-end *honest*: not yet.** The retrospective stage proves the lane can *detect* its own overclaim; the un-patched synthesis and the live D013 claim prove it does not yet *close the loop* on what it detects.
+
+### The durable fix is topological, not exhortative
+
+"Doc writers are great at ideas; builders endlessly defer" is not a discipline problem to be solved by better prompts. It is a **missing edge in the state machine.** The lane has no stage that can *fail*: every stage emits an artifact and passes it forward; none returns "this claim is false — go back." Completion language ("implemented", "enforced", "accepted") is *asserted* by a producer and never *verified* by an adversary against executable evidence.
+
+Two primitives close it, and cam-analyzer already demonstrates both — the lane just never turned them on itself:
+1. **Status-provenance on claims.** Apply the project's own `MEASURED > INFERRED > EXTRAPOLATED` lattice to *build status*: a decision/feature is `VERIFIED` (a passing executable witness exists — a named test, a `file:line`, a CLI command + expected output), `ASSERTED` (a doc says so, no witness), or `DESIGNED` (explicitly not built). No artifact may use completion language above the status its witness earns. The lane currently lets `ASSERTED` masquerade as `VERIFIED` — *inferred-as-measured, one level up.*
+2. **A verification gate with teeth.** A stage whose only job is to try to *falsify* the prior stage's claims by running their witnesses (grep the symbol, run the test, run the CLI, run `mypy`), staffed by a different agent with adversarial incentives, **with the authority to refuse and kick back.** This is exactly the 8-claim adversarial pass that produced this review's sharpest findings — it belongs *inside* the lane, not in a post-hoc audit.
+
+This is detailed as a striatum meta-workflow proposal (verification-gate + claim-ledger), tracked against `~/git/striatum/`.
