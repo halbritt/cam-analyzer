@@ -53,8 +53,10 @@ class ProvenanceMap:
         starts = [start for start, _ in ordered]
         if any(b <= a for a, b in zip(starts, starts[1:])):
             raise ValueError("interval starts must be strictly increasing")
-        self._starts = starts
+        # _intervals is the single source of truth; _starts is derived from it so
+        # the bisect lookup in at() can never drift out of sync with the intervals.
         self._intervals = [_Interval(start, provenance) for start, provenance in ordered]
+        self._starts = [iv.start_deg for iv in self._intervals]
 
     @classmethod
     def constant(cls, provenance: Provenance) -> "ProvenanceMap":

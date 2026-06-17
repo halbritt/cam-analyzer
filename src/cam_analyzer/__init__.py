@@ -12,4 +12,9 @@ the reference cam card into source-agnostic profiles and returns stamped answers
 formal refusals, or undecidable safety verdicts rather than fabricated precision.
 """
 
-__version__ = "0.0.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("cam-analyzer")
+except PackageNotFoundError:  # running from a source tree that isn't installed
+    __version__ = "0.0.0"
