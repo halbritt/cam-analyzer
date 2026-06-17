@@ -33,12 +33,17 @@ class CamLobeSpec:
     lash_in: float
 
     def __post_init__(self) -> None:
+        # Physically-impossible cam cards must not construct (GitHub issue #4):
+        # a valve lift, advertised duration, and duration@0.050" are all strictly
+        # positive magnitudes, and valve lash is a non-negative clearance.
         if self.valve_lift_in <= 0.0:
             raise ValueError("valve_lift_in must be positive")
         if self.valve_lift_in <= CHECKING_LIFT_IN:
             raise ValueError("valve_lift_in must exceed duration@0.050 checking lift")
-        if self.advertised_duration_deg <= 0.0 or self.duration_050_deg <= 0.0:
-            raise ValueError("cam durations must be positive")
+        if self.advertised_duration_deg <= 0.0:
+            raise ValueError("advertised_duration_deg must be positive")
+        if self.duration_050_deg <= 0.0:
+            raise ValueError("duration_050_deg must be positive")
         # A conformance-relevant invariant: advertised duration cannot be tighter
         # than duration @ 0.050" (trap: `advertised_lt_050`).
         if self.advertised_duration_deg < self.duration_050_deg:

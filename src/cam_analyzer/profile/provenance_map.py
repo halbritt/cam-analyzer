@@ -16,18 +16,43 @@ class _Interval:
 
 
 class ProvenanceMap:
-    """Maps crank regions to provenance over the periodic [0, 720) cycle."""
+    """Maps crank regions to provenance over the periodic [0, 720) cycle.
+
+    Each tuple ``(start, provenance)`` opens a half-open interval ``[start,
+    next_start)`` that tiles the cycle: an interval runs from its start up to
+    (but not including) the next interval's start, and the final interval wraps
+    around to 720. Starts must lie in ``[0, 720)`` -- a start of 720 or more is
+    rejected rather than silently aliased to a smaller angle by ``at()``'s
+    ``crank_deg % 720`` wrap, and negative starts are rejected too. The first
+    interval must start at crank angle 0 (compared with a small float tolerance)
+    and starts must be strictly increasing, so coverage of ``[0, 720)`` is
+    contiguous and gapless by construction (the half-open intervals abut, and
+    the last one extends to 720). Note this only guarantees coverage, not that
+    adjacent intervals carry distinct provenance.
+    """
+
+    # Tolerance for treating the first start as crank angle 0 despite float dust.
+    _ZERO_TOLERANCE = 1e-9
 
     def __init__(self, intervals: Iterable[tuple[float, Provenance]]):
-        ordered = [(start % 720.0, provenance) for start, provenance in intervals]
+        ordered = list(intervals)
         if not ordered:
             raise ValueError("provenance map requires at least one interval")
+        for start, _ in ordered:
+            if not 0.0 <= start < 720.0:
+                raise ValueError(
+                    f"interval start {start} out of range; "
+                    "starts must satisfy 0 <= start < 720"
+                )
         ordered.sort(key=lambda item: item[0])
-        if ordered[0][0] != 0.0:
+        if abs(ordered[0][0]) > self._ZERO_TOLERANCE:
             raise ValueError("provenance map must start at crank angle 0")
+        # Snap the first start to exactly 0 so that at(0) resolves to the first
+        # interval (bisect_right would otherwise underflow to -1 on float dust).
+        ordered[0] = (0.0, ordered[0][1])
         starts = [start for start, _ in ordered]
-        if len(set(starts)) != len(starts):
-            raise ValueError("interval starts must be unique")
+        if any(b <= a for a, b in zip(starts, starts[1:])):
+            raise ValueError("interval starts must be strictly increasing")
         self._starts = starts
         self._intervals = [_Interval(start, provenance) for start, provenance in ordered]
 
