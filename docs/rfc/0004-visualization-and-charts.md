@@ -246,8 +246,9 @@ CL 104.5°; LSA 107°; overlap@.050″ 28°. The lift curve is a sine-power fit 
 - **Density gutter:** near-zero across 720° — visibly five thin spikes.
 - **Collision view & cut readout:** the minimum-clearance angle lands in the
   extrapolated nose → the readout is **`CUT ? — UNDECIDABLE (min clearance falls in
-  EXTRAPOLATED region)`** and the bezel is locked AMBER. *This is the correct, honest
-  output and a regression test pins it (§4).*
+  EXTRAPOLATED region)`** and the bezel is locked AMBER. *This is the intended
+  honest output; the executable regression remains `DESIGNED` until RFC 0003's
+  geometry/collision implementation exists (§4).*
 - **"Go measure THIS":** ranks the one dial-indicator reading over the nose that would
   let the collision view commit a number.
 
@@ -266,8 +267,10 @@ measurement that would change that.*
   `tests/test_cli.py::test_render_chart_projection_from_card_data_contains_stamped_samples`.
 - **[VERIFIED]** *Shared provenance/refusal grammar metadata:* the JSON projection
   includes the solid/short-dash/long-dash/no-line style legend and segments refused
-  derivative answers as no-line samples. Witness:
-  `tests/test_cli.py::test_render_chart_projection_from_card_data_contains_stamped_samples`.
+  derivative answers as no-line samples. The CLI serializes the legend from
+  `visualization.grammar.STYLE_TABLE`, not from a second copy. Witness:
+  `tests/test_cli.py::test_render_chart_projection_from_card_data_contains_stamped_samples`
+  and `tests/test_visualization_grammar.py::test_style_legend_for_json_serializes_the_single_style_table`.
 - **[VERIFIED]** *Default behavior unchanged:* `cam-analyze --reference` still renders
   the committed Markdown report. Witness: `tests/test_reference_report_golden.py`.
 - **[DESIGNED]** *Crop survival:* render → crop to the plot area → assert the
@@ -278,7 +281,8 @@ measurement that would change that.*
   the collision view's min-clearance θ resolves into an `EXTRAPOLATED` interval and the
   cut readout is therefore `UNDECIDABLE` — **not a number.** This test fails loudly the
   day someone "improves" the tool into fabricating a confident fly-cut from a 5-point
-  card, which is the exact failure the project exists to prevent.
+  card, which is the exact failure the project exists to prevent. It is not executable
+  yet because the collision-view geometry is not built.
 
 ## 5. Risks & mitigations
 

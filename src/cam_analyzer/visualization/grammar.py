@@ -38,6 +38,17 @@ class ProvenanceStyle:
     draw_line: bool
     label: str | None = None
 
+    def to_json(self) -> dict[str, object]:
+        """Return the renderer-neutral JSON shape for this style."""
+        return {
+            "stroke": self.stroke,
+            "opacity": self.opacity,
+            "marker": self.marker,
+            "band_fill": self.band_fill,
+            "draw_line": self.draw_line,
+            "label": self.label,
+        }
+
 
 _STYLE_TABLE: Final[dict[SegmentTag, ProvenanceStyle]] = {
     Provenance.MEASURED: ProvenanceStyle(
@@ -72,6 +83,14 @@ _STYLE_TABLE: Final[dict[SegmentTag, ProvenanceStyle]] = {
 }
 
 STYLE_TABLE: Final[Mapping[SegmentTag, ProvenanceStyle]] = MappingProxyType(_STYLE_TABLE)
+
+
+def style_legend_for_json() -> dict[str, dict[str, object]]:
+    """Serialize the single provenance-to-ink table for projection exports."""
+    return {
+        _legend_key(tag): style.to_json()
+        for tag, style in STYLE_TABLE.items()
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -377,6 +396,12 @@ def _max_band(left_band: float | None, right_band: float | None) -> float | None
     return max(left_band, right_band)
 
 
+def _legend_key(tag: SegmentTag) -> str:
+    if isinstance(tag, Provenance):
+        return tag.name
+    return tag.value
+
+
 __all__ = [
     "STYLE_TABLE",
     "BandFill",
@@ -388,5 +413,6 @@ __all__ = [
     "Stroke",
     "StyledSample",
     "StyledSegment",
+    "style_legend_for_json",
     "split_series",
 ]

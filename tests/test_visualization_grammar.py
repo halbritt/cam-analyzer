@@ -4,7 +4,13 @@ import pytest
 
 from cam_analyzer.profile.provenance_map import ProvenanceMap
 from cam_analyzer.quantity import Provenance, Refusal
-from cam_analyzer.visualization import RenderingTag, SeriesSample, StyledSegment, split_series
+from cam_analyzer.visualization import (
+    RenderingTag,
+    SeriesSample,
+    StyledSegment,
+    split_series,
+    style_legend_for_json,
+)
 
 
 def _assert_gapless(
@@ -103,3 +109,12 @@ def test_refused_samples_emit_no_line_without_interpolating_across_gap() -> None
     assert refused_segment.style.draw_line is False
     assert refused_segment.style.band_fill == "cross-hatch"
     assert all(segment.x_range != (0.0, 20.0) for segment in segments if segment.style.draw_line)
+
+
+def test_style_legend_for_json_serializes_the_single_style_table() -> None:
+    legend = style_legend_for_json()
+
+    assert legend["INFERRED"]["stroke"] == "short-dash"
+    assert legend["EXTRAPOLATED"]["stroke"] == "long-dash"
+    assert legend["UNDECIDABLE"]["band_fill"] == "cross-hatch"
+    assert legend["UNDECIDABLE"]["draw_line"] is False

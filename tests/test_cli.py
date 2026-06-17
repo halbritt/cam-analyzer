@@ -77,9 +77,9 @@ def test_render_chart_projection_from_card_data_contains_stamped_samples() -> No
         "refusal_segments",
     ]
     assert "svg_renderer" in projection["deferred"]
-    assert projection["provenance_legend"]["INFERRED"]["line"] == "short_dash"
-    assert projection["provenance_legend"]["EXTRAPOLATED"]["line"] == "long_dash"
-    assert projection["provenance_legend"]["REFUSED"]["draw_line"] is False
+    assert projection["provenance_legend"]["INFERRED"]["stroke"] == "short-dash"
+    assert projection["provenance_legend"]["EXTRAPOLATED"]["stroke"] == "long-dash"
+    assert projection["provenance_legend"]["UNDECIDABLE"]["draw_line"] is False
 
     intake = projection["profiles"][0]
     assert intake["summary"]["max_lift"]["provenance"] == "EXTRAPOLATED"

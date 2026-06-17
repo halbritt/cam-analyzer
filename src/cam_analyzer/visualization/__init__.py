@@ -9,6 +9,7 @@ from cam_analyzer.visualization.grammar import (
     StyledSample,
     StyledSegment,
     split_series,
+    style_legend_for_json,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "StyledSample",
     "StyledSegment",
     "split_series",
+    "style_legend_for_json",
 ]

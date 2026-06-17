@@ -25,7 +25,7 @@ def test_projection_samples_multiple_profiles_with_stamped_quantities() -> None:
     assert projection["cycle_degrees"] == 720.0
     assert projection["sample_degrees"] == [0.0, 60.0, 109.5, 720.0]
     assert [profile["name"] for profile in projection["profiles"]] == ["intake", "exhaust"]
-    assert projection["provenance_legend"]["EXTRAPOLATED"]["line"] == "long_dash"
+    assert "provenance_legend" not in projection
 
     intake = projection["profiles"][0]
     assert intake["summary"]["max_lift"]["kind"] == "quantity"
@@ -61,8 +61,7 @@ def test_refused_samples_become_no_line_segments_without_interpolation() -> None
     assert [segment["kind"] for segment in segments] == ["quantity", "refusal", "quantity"]
     refused_segment = segments[1]
     assert refused_segment["draw_line"] is False
-    assert refused_segment["style"]["line"] == "none"
-    assert refused_segment["style"]["band_fill"] == "cross_hatch"
+    assert "style" not in refused_segment
     assert refused_segment["points"] == [
         {
             "sample_index": 1,

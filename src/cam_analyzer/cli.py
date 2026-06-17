@@ -43,6 +43,7 @@ from cam_analyzer.analysis.reporting import render_markdown_report
 from cam_analyzer.analysis.spring_safety import SpringSafetyInput, default_spring_policy
 from cam_analyzer.quantity import Inch, ProvFloat, inferred
 from cam_analyzer.sources.cam_card import CamCard, CamLobeSpec, profiles_from_cam_card
+from cam_analyzer.visualization import style_legend_for_json
 
 _DEFAULT_TIMING_LIFTS_IN = (0.050,)
 
@@ -138,6 +139,7 @@ def render_chart_projection_from_card_data(
         sample_degrees=_chart_sample_degrees(chart_step_deg),
         event_lifts=timing_lifts,
     )
+    projection["provenance_legend"] = style_legend_for_json()
     projection["implemented_subset"] = (
         "static_json_projection",
         "provenance_rendering_grammar",

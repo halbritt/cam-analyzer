@@ -80,7 +80,6 @@ def project_cam_profiles(
         "schema": SCHEMA,
         "cycle_degrees": _CYCLE_DEGREES,
         "sample_degrees": list(sample_grid),
-        "provenance_legend": _provenance_legend(),
         "profiles": [
             _project_profile(profile_input, sample_grid, event_lift_values)
             for profile_input in profile_inputs
@@ -349,7 +348,6 @@ def _segment_to_json(
         "start_deg": samples[start_index].crank_deg,
         "end_deg": samples[end_index].crank_deg,
         "draw_line": kind == "quantity",
-        "style": _style_for_segment(kind, provenance_name),
         "points": [
             _segment_point(sample) for sample in samples[start_index : end_index + 1]
         ],
@@ -363,61 +361,6 @@ def _segment_point(sample: _ProjectionSample) -> dict[str, object]:
         "value": sample.answer.get("value"),
         "answer_kind": sample.answer["kind"],
     }
-
-
-def _style_for_segment(kind: str, provenance_name: str | None) -> dict[str, object]:
-    if kind != "quantity" or provenance_name is None:
-        return _refusal_style()
-    return _style_for_provenance(Provenance[provenance_name])
-
-
-def _style_for_provenance(provenance: Provenance) -> dict[str, object]:
-    if provenance is Provenance.MEASURED:
-        return {
-            "line": "solid",
-            "opacity": 1.0,
-            "marker": "filled",
-            "band_fill": "none",
-            "draw_line": True,
-        }
-    if provenance is Provenance.INFERRED:
-        return {
-            "line": "short_dash",
-            "opacity": 0.7,
-            "marker": "half_filled",
-            "band_fill": "light",
-            "draw_line": True,
-        }
-    return {
-        "line": "long_dash",
-        "opacity": 0.45,
-        "marker": "hollow",
-        "band_fill": "hatched",
-        "draw_line": True,
-    }
-
-
-def _refusal_style() -> dict[str, object]:
-    return {
-        "line": "none",
-        "opacity": 1.0,
-        "marker": "none",
-        "band_fill": "cross_hatch",
-        "draw_line": False,
-    }
-
-
-def _provenance_legend() -> dict[str, object]:
-    legend: dict[str, object] = {
-        provenance.name: _style_for_provenance(provenance)
-        for provenance in (
-            Provenance.MEASURED,
-            Provenance.INFERRED,
-            Provenance.EXTRAPOLATED,
-        )
-    }
-    legend["REFUSED"] = _refusal_style()
-    return legend
 
 
 def _require_finite(value: float, label: str) -> None:
