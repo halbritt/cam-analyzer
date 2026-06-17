@@ -17,6 +17,9 @@ how-to (task), tutorials (learning).
 ## Decisions (the boundary, and why)
 - [`decisions/decision-log.md`](decisions/decision-log.md) — the architecture decision record (ADR table).
 
+## RFCs (proposed designs, pre-decision)
+- [`rfc/0001-honest-typed-boundary.md`](rfc/0001-honest-typed-boundary.md) — make C3/C6 mechanism-not-convention: sealed mints + phantom-typed units/frames + ergonomic inversion (resolves the round-2 "ergonomics-as-integrity" problem; addresses #5/#6/#8).
+
 ## How-to (tasks) — stubs
 - [`how-to/add-a-new-source.md`](how-to/add-a-new-source.md) — wire a new data source behind CamProfile without touching analysis.
 
