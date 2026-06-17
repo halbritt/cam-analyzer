@@ -1,0 +1,7 @@
+{
+  "title": "WR250R + Web Cam 81-651 + 13.5:1 piston (high-comp build)",
+  "intake":  {"valve_lift_in": 0.360, "advertised_duration_deg": 262.0, "duration_050_deg": 238.0, "lobe_center_deg": 109.5, "lash_in": 0.006},
+  "exhaust": {"valve_lift_in": 0.360, "advertised_duration_deg": 270.0, "duration_050_deg": 246.0, "lobe_center_deg": 104.5, "lash_in": 0.008},
+  "engine":  {"bore_mm": 77.0, "stroke_mm": 53.6, "rod_length_mm": 96.9, "static_compression_ratio": 13.5},
+  "timing_lifts_in": [0.050]
+}

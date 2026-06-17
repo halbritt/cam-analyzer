@@ -9,7 +9,7 @@ how-to (task), tutorials (learning).
 
 ## Explanation (why it is this way)
 - [`explanation/domain-driven-design.md`](explanation/domain-driven-design.md) — what is load-bearing; bounded context, aggregate roots, value objects.
-- [`explanation/dcr-report-wr250r-webcam-81-651.md`](explanation/dcr-report-wr250r-webcam-81-651.md) — a published `cam-analyze --reference` run: DCR ≈ 11.272 (INFERRED), with PTV/spring UNDECIDABLE by design.
+- [`explanation/dcr-report-wr250r-webcam-81-651.md`](explanation/dcr-report-wr250r-webcam-81-651.md) — published report for the owner's 13.5:1 piston build: DCR ≈ 11.882 (INFERRED); PTV/spring still UNDECIDABLE → motivates RFC 0002/0003.
 
 ## Reference (what it is, precisely)
 - [`reference/ubiquitous-language.md`](reference/ubiquitous-language.md) — the canonical glossary; code must agree with it.
@@ -20,6 +20,8 @@ how-to (task), tutorials (learning).
 
 ## RFCs (proposed designs, pre-decision)
 - [`rfc/0001-honest-typed-boundary.md`](rfc/0001-honest-typed-boundary.md) — make C3/C6 mechanism-not-convention: sealed mints + phantom-typed units/frames + ergonomic inversion (resolves the round-2 "ergonomics-as-integrity" problem; addresses #5/#6/#8).
+- [`rfc/0002-static-cr-chamber-volume-solver.md`](rfc/0002-static-cr-chamber-volume-solver.md) — compute static CR from measured chamber volumes and invert it to "dome cc to remove"; gives the DCR's CR input real provenance (addresses #17).
+- [`rfc/0003-piston-to-valve-clearance-model.md`](rfc/0003-piston-to-valve-clearance-model.md) — a static-kinematic P2V model that turns UNDECIDABLE into an INFERRED screening estimate + relief-cut depth, without ever replacing the clay check.
 
 ## How-to (tasks) — stubs
 - [`how-to/add-a-new-source.md`](how-to/add-a-new-source.md) — wire a new data source behind CamProfile without touching analysis.
