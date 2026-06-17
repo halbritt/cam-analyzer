@@ -12,6 +12,10 @@ from cam_analyzer.quantity import Provenance
 
 CHECKING_LIFT_IN = 0.050
 NOSE_UNSUPPORTED_HALF_WIDTH_DEG = 6.0
+# Below this sin(phase) the fitted sine-power's high-order analytic derivatives
+# blow up (negative fractional powers near the flank edges). Even the opt-in
+# approximation refuses there rather than return a meaningless spike.
+_APPROX_MIN_SINE = 0.05
 # The published @0.050" opening/closing angles sit on the inferred region's
 # boundary. Regions are half-open [start, end), so the closing angle (a region
 # end) would otherwise read back as EXTRAPOLATED. Pad each inferred span by a
@@ -162,6 +166,58 @@ class SinePowerCamCardOperator(LiftOperator):
             return 0
         return 1
 
+    def max_approximate_derivative(self, crank_deg: float) -> int:
+        """Highest order this operator can *approximate* (orders 1-3).
+
+        A ballpark only — distinct from :meth:`max_supported_derivative`, which is
+        what the operator can *justify*. Returns 3 across the active lobe (nose and
+        mid-flank), 0 in the closed region and at the extreme flank edges where the
+        analytic high-order derivatives blow up.
+        """
+        offset = self._offset_from_center(crank_deg)
+        half_duration = self._lobe.advertised_duration_deg / 2.0
+        if abs(offset) >= half_duration:
+            return 0
+        phase = math.pi * (offset + half_duration) / self._lobe.advertised_duration_deg
+        if math.sin(phase) < _APPROX_MIN_SINE:
+            return 0
+        return 3
+
+    def approximate_derivative(self, order: int, crank_deg: float) -> float:
+        """Analytic n-th derivative of the fitted sine-power lobe (orders 1-3).
+
+        For the opt-in approximate path only; callers stamp the result
+        EXTRAPOLATED. The 2nd/3rd derivatives are governed by the assumed
+        sine-power flank shape, not the cam card, so they are a ballpark, not
+        analysis-grade.
+        """
+        if order not in (1, 2, 3):
+            raise ValueError("approximate_derivative supports orders 1-3")
+        offset = self._offset_from_center(crank_deg)
+        half_duration = self._lobe.advertised_duration_deg / 2.0
+        if abs(offset) > half_duration:
+            return 0.0
+        phase = math.pi * (offset + half_duration) / self._lobe.advertised_duration_deg
+        cosine = math.cos(phase)
+        sine = max(math.sin(phase), _APPROX_MIN_SINE)  # guard negative-power blow-up
+        scale = math.pi / self._lobe.advertised_duration_deg
+        power = self._power
+        lift = self._lobe.valve_lift_in
+        if order == 1:
+            return float(lift * power * sine ** (power - 1.0) * cosine * scale)
+        if order == 2:
+            return float(
+                lift * power * scale**2
+                * ((power - 1.0) * sine ** (power - 2.0) * cosine**2 - sine**power)
+            )
+        return float(
+            lift * power * scale**3
+            * (
+                (power - 1.0) * (power - 2.0) * sine ** (power - 3.0) * cosine**3
+                - (3.0 * power - 2.0) * sine ** (power - 1.0) * cosine
+            )
+        )
+
     def _offset_from_center(self, crank_deg: float) -> float:
         return ((crank_deg - self._centerline_crank_deg + 360.0) % 720.0) - 360.0
 
@@ -180,34 +236,59 @@ class SinePowerCamCardOperator(LiftOperator):
 HalfSineCamCardOperator = SinePowerCamCardOperator
 
 
-def profiles_from_cam_card(card: CamCard) -> CamCardProfiles:
-    """Return source-agnostic intake and exhaust profiles from one cam card."""
+def profiles_from_cam_card(
+    card: CamCard, *, approximate_derivatives: bool = False
+) -> CamCardProfiles:
+    """Return source-agnostic intake and exhaust profiles from one cam card.
+
+    With ``approximate_derivatives=True`` the profiles answer otherwise-refused
+    higher derivatives (acceleration/jerk, and velocity at the nose) with an
+    EXTRAPOLATED ballpark instead of a Refusal — useful for a rough shape, but
+    never trustworthy enough to pass the cliff-analysis fitness gates.
+    """
     return CamCardProfiles(
-        intake=intake_profile_from_cam_card(card),
-        exhaust=exhaust_profile_from_cam_card(card),
+        intake=intake_profile_from_cam_card(
+            card, approximate_derivatives=approximate_derivatives
+        ),
+        exhaust=exhaust_profile_from_cam_card(
+            card, approximate_derivatives=approximate_derivatives
+        ),
     )
 
 
-def intake_profile_from_cam_card(card: CamCard) -> CanonicalCamProfile:
-    return _profile_from_lobe(card.intake, "intake")
+def intake_profile_from_cam_card(
+    card: CamCard, *, approximate_derivatives: bool = False
+) -> CanonicalCamProfile:
+    return _profile_from_lobe(
+        card.intake, "intake", approximate_derivatives=approximate_derivatives
+    )
 
 
-def exhaust_profile_from_cam_card(card: CamCard) -> CanonicalCamProfile:
-    return _profile_from_lobe(card.exhaust, "exhaust")
+def exhaust_profile_from_cam_card(
+    card: CamCard, *, approximate_derivatives: bool = False
+) -> CanonicalCamProfile:
+    return _profile_from_lobe(
+        card.exhaust, "exhaust", approximate_derivatives=approximate_derivatives
+    )
 
 
-def CamCardApproxProfile(card: CamCard) -> CamCardProfiles:  # noqa: N802
+def CamCardApproxProfile(  # noqa: N802
+    card: CamCard, *, approximate_derivatives: bool = False
+) -> CamCardProfiles:
     """Compatibility factory returning both side-specific profiles."""
-    return profiles_from_cam_card(card)
+    return profiles_from_cam_card(card, approximate_derivatives=approximate_derivatives)
 
 
-def _profile_from_lobe(lobe: CamLobeSpec, side: CamSide) -> CanonicalCamProfile:
+def _profile_from_lobe(
+    lobe: CamLobeSpec, side: CamSide, *, approximate_derivatives: bool = False
+) -> CanonicalCamProfile:
     operator = SinePowerCamCardOperator(lobe, side)
     samples = tuple(operator.evaluate(float(degree)) for degree in range(720))
     model = CanonicalLiftModel(
         samples_720=samples,
         operator=operator,
         provenance=_provenance_for_cam_card_operator(operator),
+        approximate_derivatives=approximate_derivatives,
     )
     return CanonicalCamProfile(model)
 
