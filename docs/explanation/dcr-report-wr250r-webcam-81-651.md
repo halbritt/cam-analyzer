@@ -21,6 +21,10 @@
 >   transfer; the honest unknown is the +1.7-point static jump vs your fuel.
 > - **Piston-to-valve** is `UNDECIDABLE` because the cam card carries no measured
 >   clearance — see [RFC 0003](../rfc/0003-piston-to-valve-clearance-model.md).
+>   **The piston vendor explicitly warns "MAKE SURE YOU CHECK P2V"** — this
+>   high-comp piston is not a drop-in; P2V is the gating (binary, catastrophic)
+>   failure mode, and a clay check at the intended cam timing is mandatory before
+>   it runs. The tool's `UNDECIDABLE` here agrees with the vendor: go measure it.
 > - **"How much dome to cut"** has no model at all (no chamber-volume math) — see
 >   [RFC 0002](../rfc/0002-static-cr-chamber-volume-solver.md).
 
