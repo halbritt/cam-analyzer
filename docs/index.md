@@ -9,6 +9,7 @@ how-to (task), tutorials (learning).
 
 ## Explanation (why it is this way)
 - [`explanation/domain-driven-design.md`](explanation/domain-driven-design.md) — what is load-bearing; bounded context, aggregate roots, value objects.
+- [`explanation/dcr-report-wr250r-webcam-81-651.md`](explanation/dcr-report-wr250r-webcam-81-651.md) — a published `cam-analyze --reference` run: DCR ≈ 11.272 (INFERRED), with PTV/spring UNDECIDABLE by design.
 
 ## Reference (what it is, precisely)
 - [`reference/ubiquitous-language.md`](reference/ubiquitous-language.md) — the canonical glossary; code must agree with it.
