@@ -46,7 +46,7 @@ Witnesses are relative to the repo root. Tests are referenced as
 | D016 | `Answer \| Refusal` at every safety-facing call | **VERIFIED** | PTV/spring return `… \| Refusal`; `velocity/acceleration/jerk_at -> Answer` (`profile/__init__.py:36-38`); `tests/test_safety_and_reporting.py` | |
 | D017 | `ProvArray` — provenance through NumPy | **DESIGNED** | — (no `ProvArray` in `src`) | RFC 0001 Pillar D follow-on. |
 | D018 | Value-of-information work orders | **DESIGNED** (deferred) | — | Depends on D013 brackets. |
-| D019 | Honest visualization projection and rendering grammar | **VERIFIED** (partial) | `tests/test_visualization_projection.py`; `tests/test_visualization_grammar.py`; `tests/test_cli.py`; `tests/test_architecture_boundary.py` | Built: source-blind JSON projection, grammar-owned provenance legend, `cam-analyze --charts json`. `DESIGNED`: SVG/ECharts adapter, crop-proof ledger, uncertainty bands, PTV collision chart, "go measure THIS", web UI. |
+| D019 | Honest visualization projection and rendering grammar | **VERIFIED** (partial) | `tests/test_visualization_projection.py`; `tests/test_visualization_grammar.py`; `tests/test_visualization_svg.py`; `tests/test_cli.py`; `tests/test_architecture_boundary.py` | Built: source-blind JSON projection, grammar-owned provenance legend, `cam-analyze --charts json`, static valve-lift overlay SVG via `cam-analyze --charts svg`. `DESIGNED`: ECharts adapter, crop-proof ledger, uncertainty bands, SVAJ stack, PTV collision chart, "go measure THIS", web UI. |
 
 ## Pillars (RFC 0001 / round-1 synthesis)
 
@@ -81,8 +81,8 @@ Witnesses are relative to the repo root. Tests are referenced as
 | Piston-to-valve (PTV) | **VERIFIED** (single-curve) | `tests/test_safety_and_reporting.py` | Two-curve bracketing (D013) is `DESIGNED`. |
 | Valve-spring safety | **VERIFIED** (single-curve) | `tests/test_safety_and_reporting.py` | Two-curve bracketing (D013) is `DESIGNED`. |
 | Install sensitivity | **DESIGNED** | — | Listed in the spec; not implemented. |
-| Reporting | **VERIFIED** (Markdown + chart projection JSON) | `render_markdown_report` (`analysis/reporting.py`); `project_cam_profiles` (`analysis/projection.py`); `tests/test_safety_and_reporting.py`; `tests/test_visualization_projection.py`; `tests/test_cli.py` | **HTML / PDF / SVG / ECharts are `DESIGNED`, not built.** |
-| `cam-analyze` CLI (`--reference`, card file, `--charts json`) | **VERIFIED** | `tests/test_cli.py::test_main_with_reference_flag_prints_report`, `::test_main_with_card_file`, `::test_main_incoherent_card_is_refused`, `::test_main_with_reference_flag_can_print_chart_projection`; entry point `pyproject.toml:20` | `--charts svg` remains `DESIGNED`, not a supported flag. |
+| Reporting | **VERIFIED** (Markdown + chart projection JSON + static lift SVG) | `render_markdown_report` (`analysis/reporting.py`); `project_cam_profiles` (`analysis/projection.py`); `render_valve_lift_svg` (`visualization/svg.py`); `tests/test_safety_and_reporting.py`; `tests/test_visualization_projection.py`; `tests/test_visualization_svg.py`; `tests/test_cli.py` | **HTML / PDF / ECharts are `DESIGNED`, not built.** |
+| `cam-analyze` CLI (`--reference`, card file, `--charts json`, `--charts svg`) | **VERIFIED** | `tests/test_cli.py::test_main_with_reference_flag_prints_report`, `::test_main_with_card_file`, `::test_main_incoherent_card_is_refused`, `::test_main_with_reference_flag_can_print_chart_projection`, `::test_main_with_reference_flag_can_print_svg_chart`; entry point `pyproject.toml:20` | `--charts svg` emits a static valve-lift overlay, not the full deferred chart suite. |
 
 ## Enforcement (WS-ENFORCE)
 

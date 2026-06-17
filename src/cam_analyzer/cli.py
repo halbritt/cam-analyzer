@@ -1,8 +1,8 @@
-"""``cam-analyze`` — one command from a cam-card file to a report/projection.
+"""``cam-analyze`` — one command from a cam-card file to a report/projection/chart.
 
 Stays dependency-free: a cam card is a small JSON file (or use ``--reference`` for
 the built-in Web Cam 81-651 WR250R card). The CLI only wires source → profile →
-report/projection; every honesty guarantee lives in the layers it calls. Where
+report/projection/chart; every honesty guarantee lives in the layers it calls. Where
 the card's evidence can't justify a number, the report says so (refusals /
 UNDECIDABLE), exactly as the library does.
 
@@ -43,7 +43,7 @@ from cam_analyzer.analysis.reporting import render_markdown_report
 from cam_analyzer.analysis.spring_safety import SpringSafetyInput, default_spring_policy
 from cam_analyzer.quantity import Inch, ProvFloat, inferred
 from cam_analyzer.sources.cam_card import CamCard, CamLobeSpec, profiles_from_cam_card
-from cam_analyzer.visualization import style_legend_for_json
+from cam_analyzer.visualization import render_valve_lift_svg, style_legend_for_json
 
 _DEFAULT_TIMING_LIFTS_IN = (0.050,)
 
@@ -128,6 +128,37 @@ def render_chart_projection_from_card_data(
 ) -> str:
     """Build profiles from parsed card data and render the RFC-0004 JSON projection."""
 
+    projection = _chart_projection_from_card_data(
+        data,
+        approximate_derivatives=approximate_derivatives,
+        chart_step_deg=chart_step_deg,
+    )
+    return projection_to_json(projection) + "\n"
+
+
+def render_svg_chart_from_card_data(
+    data: Any,
+    *,
+    approximate_derivatives: bool,
+    chart_step_deg: float = 5.0,
+) -> str:
+    """Build profiles from parsed card data and render the valve-lift SVG chart."""
+
+    projection = _chart_projection_from_card_data(
+        data,
+        approximate_derivatives=approximate_derivatives,
+        chart_step_deg=chart_step_deg,
+    )
+    title = str(data.get("title", "Valve lift overlay")) if isinstance(data, dict) else "Valve lift overlay"
+    return render_valve_lift_svg(projection, title=title) + "\n"
+
+
+def _chart_projection_from_card_data(
+    data: Any,
+    *,
+    approximate_derivatives: bool,
+    chart_step_deg: float,
+) -> dict[str, object]:
     card = _card_from_mapping(data)
     profiles = profiles_from_cam_card(card, approximate_derivatives=approximate_derivatives)
     timing_lifts = tuple(inferred(value, Inch, "valve_side") for value in _timing_lifts_in(data))
@@ -145,16 +176,18 @@ def render_chart_projection_from_card_data(
         "provenance_rendering_grammar",
         "sampled_c5_series",
         "refusal_segments",
+        "static_valve_lift_svg",
     )
     projection["deferred"] = (
-        "svg_renderer",
         "echarts_ssr_adapter",
+        "chart_suite_svg_export",
         "interactive_webapp",
         "uncertainty_bands",
+        "svaj_stack",
         "piston_to_valve_collision_view",
         "go_measure_this_overlay",
     )
-    return projection_to_json(projection) + "\n"
+    return projection
 
 
 def _load_card_data(args: argparse.Namespace) -> Any:
@@ -203,7 +236,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="cam-analyze",
         description=(
             "Turn a cam-card JSON file into a source-blind Markdown report "
-            "or RFC-0004 chart JSON projection."
+            "or RFC-0004 chart output."
         ),
     )
     source = parser.add_mutually_exclusive_group(required=True)
@@ -220,15 +253,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--charts",
-        choices=("markdown", "json"),
+        choices=("markdown", "json", "svg"),
         default="markdown",
-        help="output the default Markdown report or the RFC-0004 chart JSON projection",
+        help="output the default Markdown report, RFC-0004 chart JSON, or static SVG lift chart",
     )
     parser.add_argument(
         "--chart-step-deg",
         type=float,
         default=5.0,
-        help="crank-degree sample step for --charts json",
+        help="crank-degree sample step for --charts json or --charts svg",
     )
     return parser
 
@@ -240,6 +273,12 @@ def main(argv: list[str] | None = None) -> int:
         data = _load_card_data(args)
         if args.charts == "json":
             output = render_chart_projection_from_card_data(
+                data,
+                approximate_derivatives=args.approximate,
+                chart_step_deg=args.chart_step_deg,
+            )
+        elif args.charts == "svg":
+            output = render_svg_chart_from_card_data(
                 data,
                 approximate_derivatives=args.approximate,
                 chart_step_deg=args.chart_step_deg,

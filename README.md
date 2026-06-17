@@ -30,7 +30,7 @@ finished product computes:
 | Valve-spring safety | coil-bind margin, retainer-to-guide margin, seat/open pressure, float RPM |
 | Acceleration / jerk | valvetrain dynamics from the curve's derivatives |
 | Install sensitivity | how advance/retard, lash, and deck/gasket variation move every result |
-| Reporting | Markdown summary with warnings and an install checklist; static RFC-0004 chart-projection JSON via `cam-analyze --charts json` (HTML / PDF / SVG / ECharts / webapp are `DESIGNED`, not built) |
+| Reporting | Markdown summary with warnings and an install checklist; static RFC-0004 chart-projection JSON via `cam-analyze --charts json`; static valve-lift overlay SVG via `cam-analyze --charts svg` (HTML / PDF / ECharts / webapp are `DESIGNED`, not built) |
 
 Every one of these consumes **only** the `CamProfile` query surface. None of them
 can see a `CamCard`, a PDF/CSV parser, or a measured-data file.
@@ -196,6 +196,7 @@ pytest
 # default CLI output is Markdown; RFC 0004 adds an optional JSON projection
 cam-analyze --reference
 cam-analyze --reference --charts json
+cam-analyze --reference --charts svg > reference-lift.svg
 ```
 
 Milestone 1 is implemented: the reference cam card can produce intake and exhaust

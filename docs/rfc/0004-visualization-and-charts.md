@@ -1,10 +1,11 @@
 # RFC 0004 — Visualization & chart suite (honest-by-construction)
 
-- **Status:** Accepted for the implemented projection/grammar slice. **Build status:** `VERIFIED` partial —
-  `cam-analyze --charts json` now emits the static, renderer-neutral projection
-  and provenance/refusal grammar metadata. The default output remains the Markdown
-  report from `render_markdown_report`
-  (`src/cam_analyzer/analysis/reporting.py`). SVG rendering, an ECharts adapter,
+- **Status:** Accepted for the implemented projection/grammar/static-lift-renderer slice.
+  **Build status:** `VERIFIED` partial — `cam-analyze --charts json` now emits the
+  static, renderer-neutral projection and provenance/refusal grammar metadata;
+  `cam-analyze --charts svg` renders the valve-lift overlay SVG from that projection.
+  The default output remains the Markdown report from `render_markdown_report`
+  (`src/cam_analyzer/analysis/reporting.py`). ECharts, the full SVAJ stack,
   uncertainty bands, the collision view, the measurement-plan overlay, and any web
   layer remain `DESIGNED` / deferred.
 - **Date:** 2026-06-17
@@ -47,10 +48,11 @@ On top of the grammar sit two tiers of charts:
   **"go measure THIS" overlay** (the tool ranks the single measurement that would
   collapse an `UNDECIDABLE` verdict into `PASS`/`FAIL`).
 
-The implemented slice is **static JSON projection today** (§3.3): sampled C5
-answers, refusals, segmented series, and a provenance legend that a renderer may
-consume but may not upgrade. ECharts server-side SVG and the identical spec in a
-future browser remain the intended rendering path, not built output.
+The implemented slice is **static projection plus a first SVG lift renderer today**
+(§3.3): sampled C5 answers, refusals, segmented series, a provenance legend that a
+renderer may consume but may not upgrade, and a dependency-free static valve-lift
+overlay. ECharts server-side SVG and the identical spec in a future browser remain
+the intended richer rendering path, not built output.
 
 On the reference cam (Web Cam 81-651, a sine-power fit to 5 numbers), the honest
 result is blunt and is the whole point: most of every curve renders dashed, the
@@ -89,9 +91,9 @@ is therefore not a styling note; it is the acceptance criterion.
   Drawing a combustion chart we can't populate would itself violate refuse-to-draw.
 - **Replacing the clay check.** Per RFC 0003, the collision view is an `INFERRED`
   screen that tells you whether/where to clay — never a `MEASURED` go-ahead.
-- **A full webapp.** The implemented slice builds only the static JSON projection
-  and grammar metadata. Static SVG and the interactive app remain gated behind real
-  triggers (§7), not built speculatively.
+- **A full webapp.** The implemented slice builds only the static JSON projection,
+  grammar metadata, and a static valve-lift SVG. ECharts and the interactive app
+  remain gated behind real triggers (§7), not built speculatively.
 - **New physics.** Charts project existing quantities. Where a chart needs a number
   the tool doesn't have (e.g. deck geometry for the collision zero-point), that gap
   is RFC 0003's, and the chart must refuse rather than invent it.
@@ -223,16 +225,18 @@ dependency; see the risk in §5 and the band-math open question in §7.
   projection. The boundary is clean — Python computes and stamps; the renderer only
   draws what it is given and may not upgrade provenance.
 - **CLI surface:** `cam-analyze <card.json> --charts json` is implemented and emits
-  the projection for downstream/web use. `cam-analyze <card.json> --charts svg --out
-  dir/` remains `DESIGNED`, not a supported flag. Default stays the Markdown report
-  (no behavior change unless a chart flag is passed).
+  the projection for downstream/web use. `cam-analyze <card.json> --charts svg` is
+  implemented and writes a static valve-lift overlay SVG to stdout. A richer
+  `--out dir/` chart-suite export remains `DESIGNED`, not a supported flag. Default
+  stays the Markdown report (no behavior change unless a chart flag is passed).
 
 ### 3.4 Seam in current code
 
 `analysis/projection.py` serializes already-computed `CamProfile` boundary answers
-to the JSON contract, and `cli.py` exposes it through `--charts json`. The projection
-samples C5 queries only; analysis still does not import `sources`, and a chart can
-never reach *into* a source to recompute or upgrade provenance.
+to the JSON contract, `visualization/svg.py` renders the lift overlay from that
+contract, and `cli.py` exposes them through `--charts json` and `--charts svg`. The
+projection samples C5 queries only; analysis still does not import `sources`, and a
+chart can never reach *into* a source to recompute or upgrade provenance.
 
 ### 3.5 Worked example — the reference cam (Web Cam 81-651, 13.5:1 build)
 
@@ -271,6 +275,10 @@ measurement that would change that.*
   `visualization.grammar.STYLE_TABLE`, not from a second copy. Witness:
   `tests/test_cli.py::test_render_chart_projection_from_card_data_contains_stamped_samples`
   and `tests/test_visualization_grammar.py::test_style_legend_for_json_serializes_the_single_style_table`.
+- **[VERIFIED]** *Static valve-lift SVG:* `cam-analyze --charts svg` emits a
+  dependency-free SVG overlay from the same source-blind projection and provenance
+  legend. Witness: `tests/test_visualization_svg.py` and
+  `tests/test_cli.py::test_main_with_reference_flag_can_print_svg_chart`.
 - **[VERIFIED]** *Default behavior unchanged:* `cam-analyze --reference` still renders
   the committed Markdown report. Witness: `tests/test_reference_report_golden.py`.
 - **[DESIGNED]** *Crop survival:* render → crop to the plot area → assert the
@@ -311,8 +319,9 @@ measurement that would change that.*
   *Mitigate:* ship only the redundant, conventional, print-safe encodings in §3.1.1;
   the exotic ones are parked in §7 / the design appendix, not the v1.
 - **Webapp scope creep.** "Maybe a webapp" can swallow the project. *Mitigate:* the
-  implemented slice is JSON projection only; static SVG and any webapp are gated on a
-  real trigger (§7) and inherit the identical specs for free.
+  implemented slice is JSON projection plus one static valve-lift SVG; richer SVG
+  exports and any webapp are gated on a real trigger (§7) and inherit the identical
+  specs for free.
 
 ## 6. Alternatives considered
 

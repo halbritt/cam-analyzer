@@ -11,6 +11,7 @@ from cam_analyzer.cli import (
     main,
     render_chart_projection_from_card_data,
     render_report_from_card_data,
+    render_svg_chart_from_card_data,
 )
 
 _REFERENCE_CARD = {
@@ -75,8 +76,10 @@ def test_render_chart_projection_from_card_data_contains_stamped_samples() -> No
         "provenance_rendering_grammar",
         "sampled_c5_series",
         "refusal_segments",
+        "static_valve_lift_svg",
     ]
-    assert "svg_renderer" in projection["deferred"]
+    assert "echarts_ssr_adapter" in projection["deferred"]
+    assert "chart_suite_svg_export" in projection["deferred"]
     assert projection["provenance_legend"]["INFERRED"]["stroke"] == "short-dash"
     assert projection["provenance_legend"]["EXTRAPOLATED"]["stroke"] == "long-dash"
     assert projection["provenance_legend"]["UNDECIDABLE"]["draw_line"] is False
@@ -98,6 +101,24 @@ def test_render_chart_projection_from_card_data_contains_stamped_samples() -> No
     assert all(sample["answer"]["kind"] == "refusal" for sample in acceleration_samples)
 
 
+def test_render_svg_chart_from_card_data_draws_the_test_cam_lift_overlay() -> None:
+    svg = render_svg_chart_from_card_data(
+        _REFERENCE_CARD,
+        approximate_derivatives=False,
+        chart_step_deg=20.0,
+    )
+
+    assert svg.startswith("<svg ")
+    assert "Test card" in svg
+    assert "Intake" in svg
+    assert "Exhaust" in svg
+    assert "INFERRED" in svg
+    assert "EXTRAPOLATED" in svg
+    assert 'stroke-dasharray="6 4"' in svg
+    assert 'stroke-dasharray="12 7"' in svg
+    assert "Renderer draws only sampled boundary answers" in svg
+
+
 def test_main_with_reference_flag_prints_report(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = main(["--reference"])
 
@@ -114,6 +135,16 @@ def test_main_with_reference_flag_can_print_chart_projection(capsys: pytest.Capt
     assert exit_code == 0
     projection = json.loads(captured.out)
     assert projection["schema"] == "cam_analyzer.visualization_projection.v1"
+    assert "Dynamic compression ratio:" not in captured.out
+
+
+def test_main_with_reference_flag_can_print_svg_chart(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(["--reference", "--charts", "svg", "--chart-step-deg", "360"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.startswith("<svg ")
+    assert "WR250R reference" in captured.out
     assert "Dynamic compression ratio:" not in captured.out
 
 
