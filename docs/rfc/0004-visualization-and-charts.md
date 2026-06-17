@@ -3,7 +3,7 @@
 - **Status:** Accepted for the implemented projection/grammar/static-SVAJ-renderer slice.
   **Build status:** `VERIFIED` partial — `cam-analyze --charts json` now emits the
   static, renderer-neutral projection and provenance/refusal grammar metadata;
-  `cam-analyze --charts svg` renders the static SVAJ SVG from that projection.
+  `cam-analyze --charts svg` renders the overlap-centered static SVAJ SVG from that projection.
   The default output remains the Markdown report from `render_markdown_report`
   (`src/cam_analyzer/analysis/reporting.py`), now including lift-threshold durations
   and profile-quality warnings. ECharts, crop-proof export, calibrated uncertainty
@@ -41,7 +41,7 @@ applied to a different projection.
 On top of the grammar sit two tiers of charts:
 
 - **Parity tier** (§3.2.A) — the charts a cam builder expects from
-  Performance Trends / Lotus / COMP: the SVAJ stack, the 720° valve-lift overlay,
+  Performance Trends / Lotus / COMP: the overlap-centered SVAJ stack, the secondary 720° valve-lift overview,
   the polar valve-timing clock, the cam-card panel, and a comparison overlay.
 - **Differentiator tier** (§3.2.B) — two charts no bench analyzer draws, both
   flowing from this tool's honesty stance: the **piston-to-valve collision view**
@@ -49,12 +49,15 @@ On top of the grammar sit two tiers of charts:
   **"go measure THIS" overlay** (the tool ranks the single measurement that would
   collapse an `UNDECIDABLE` verdict into `PASS`/`FAIL`).
 
-The implemented slice is **static projection plus a static SVAJ SVG renderer today**
+The implemented slice is **static projection plus an overlap-centered static SVAJ SVG renderer today**
 (§3.3): sampled C5 answers, refusals, segmented series, a provenance legend that a
 renderer may consume but may not upgrade, threshold-duration tables, profile-quality
 warnings, provenance-scaled p50/p95 confidence bands, and a dependency-free static
-lift/velocity/acceleration/jerk stack. ECharts server-side SVG and the identical spec
-in a future browser remain the intended richer rendering path, not built output.
+lift/velocity/acceleration/jerk stack. The primary x-axis is -180° to +180° around
+TDC overlap, with hard @0.050 event markers, threshold lines, overlap summaries,
+validation warnings, and a compact secondary 720° overview. ECharts server-side SVG
+and the identical spec in a future browser remain the intended richer rendering path,
+not built output.
 
 On the reference cam (Web Cam 81-651, a constrained polynomial motion-law fit to a
 sparse cam card), the honest result is blunt and is the whole point: most of every
@@ -115,7 +118,7 @@ refusal style) to a redundantly-coded style triplet:
 |---|---|---|---|---|
 | `MEASURED` (2) | solid | 1.0 | filled | none |
 | `INFERRED` (1) | short-dash | ~0.70 | half-filled | light, no hatch |
-| `EXTRAPOLATED` (0) | long-dash | ~0.45 | hollow | hatched, widening |
+| `EXTRAPOLATED` (0) | dotted | ~0.45 | hollow | light, widening |
 | `UNDECIDABLE` (refusal) | **no line** | — | — | cross-hatch + label "tool refuses to assert here" |
 
 Redundancy is deliberate: every distinction is carried by **stroke dash *and* hatch**,
@@ -178,11 +181,15 @@ see the risk in §5 and the band-math open question in §7.
   jerk) sharing one crank-angle X-axis, RPM-independent angle-based units
   (in, in/deg, in/deg², in/deg³). The accel panel shows the characteristic
   positive→negative→positive three-pulse shape (where the spring, not the cam, must
-  reverse the valvetrain). Each panel obeys §3.1.3's ceiling, so the lower panels are
-  visibly less-trusted.
+  reverse the valvetrain). The implemented static SVG makes the overlap-centered
+  -180° to +180° view primary and keeps lift as the visual hero; velocity,
+  acceleration, and jerk are supporting panels on the same x-axis. Each panel obeys
+  §3.1.3's ceiling, so the lower panels are visibly less-trusted.
 - **Valve-lift overlay** — intake (blue) + exhaust (red/orange) over the full 720°
-  cycle, 0° = TDC overlap, the overlap wedge shaded near TDC, with IVO/IVC/EVO/EVC,
-  centerlines, and LSA annotated. The single most-recognized chart in the trade.
+  cycle as a secondary overview, with 0° = TDC overlap in the primary view, the
+  overlap wedge shaded near TDC, hard IVO/IVC/EVO/EVC markers, centerlines, LSA,
+  threshold lines, and duration/overlap summaries annotated. The single most-recognized
+  chart in the trade.
 - **Polar valve-timing clock** — a circle (TDC top, BDC bottom, clockwise), the four
   events on the rim, overlap shaded as the top wedge. Notably *absent* from the
   commercial bench analyzers — a cheap differentiator — and here its event ticks carry
@@ -231,7 +238,7 @@ see the risk in §5 and the band-math open question in §7.
   draws what it is given and may not upgrade provenance.
 - **CLI surface:** `cam-analyze <card.json> --charts json` is implemented and emits
   the projection for downstream/web use. `cam-analyze <card.json> --charts svg` is
-  implemented and writes a static SVAJ SVG to stdout. A richer
+  implemented and writes an overlap-centered static SVAJ SVG to stdout. A richer
   `--out dir/` chart-suite export remains `DESIGNED`, not a supported flag. Default
   stays the Markdown report (no behavior change unless a chart flag is passed).
 
@@ -240,7 +247,7 @@ see the risk in §5 and the band-math open question in §7.
 `analysis/projection.py` serializes already-computed `CamProfile` boundary answers
 to the JSON contract, `analysis/profile_quality.py` computes threshold durations,
 confidence bands, and quality warnings through the same boundary,
-`visualization/svg.py` renders the SVAJ stack from that contract, and `cli.py`
+`visualization/svg.py` renders the overlap-centered SVAJ stack from that contract, and `cli.py`
 exposes them through `--charts json` and `--charts svg`. The projection samples C5
 queries only; analysis still does not import `sources`, and a chart can never reach
 *into* a source to recompute or upgrade provenance.
@@ -251,9 +258,10 @@ Intake 0.360″ / 262° adv / 238°@.050″ / CL 109.5°; exhaust 0.360″ / 270
 CL 104.5°; LSA 107°; overlap@.050″ 28°. The lift curve is a constrained
 piecewise-quintic motion-law fit to those sparse numbers, so:
 
-- **Valve-lift overlay & SVAJ stack:** ramps render `INFERRED` (short-dash), the nose
-  and closed regions `EXTRAPOLATED` (long-dash + widening confidence band); the jerk
-  panel is explicitly model-derived rather than measured valvetrain data.
+- **Valve-lift overlay & SVAJ stack:** ramps render `INFERRED` (dash), the nose
+  and closed regions `EXTRAPOLATED` (dotted + widening confidence band); the jerk
+  panel is explicitly model-derived rather than measured valvetrain data. The primary
+  plot is centered on TDC overlap and displays hard @0.050 event markers directly.
 - **Threshold-duration table:** reports 0.001/0.006/0.020/0.050/0.100/0.200 in
   durations from the same `CamProfile` query surface.
 - **Quality warnings:** flag underconstrained reconstruction, implausibly symmetric
@@ -282,14 +290,15 @@ measurement that would change that.*
   jerk answers and timing-event projections. Witness:
   `tests/test_cli.py::test_render_chart_projection_from_card_data_contains_stamped_samples`.
 - **[VERIFIED]** *Shared provenance/refusal grammar metadata:* the JSON projection
-  includes the solid/short-dash/long-dash/no-line style legend and segments refused
+  includes the solid/short-dash/dotted/no-line style legend and segments refused
   derivative answers as no-line samples. The CLI serializes the legend from
   `visualization.grammar.STYLE_TABLE`, not from a second copy. Witness:
   `tests/test_cli.py::test_render_chart_projection_from_card_data_contains_stamped_samples`
   and `tests/test_visualization_grammar.py::test_style_legend_for_json_serializes_the_single_style_table`.
-- **[VERIFIED]** *Static SVAJ SVG:* `cam-analyze --charts svg` emits a
+- **[VERIFIED]** *Overlap-centered static SVAJ SVG:* `cam-analyze --charts svg` emits a
   dependency-free lift/velocity/acceleration/jerk SVG from the same source-blind
-  projection, confidence bands, and provenance legend. Witness:
+  projection, confidence bands, hard @0.050 event markers, threshold lines, summary
+  panel, validation section, secondary 720° overview, and provenance legend. Witness:
   `tests/test_visualization_svg.py` and
   `tests/test_cli.py::test_main_with_reference_flag_can_print_svg_chart`.
 - **[VERIFIED]** *Threshold durations and quality warnings:* the projection and
@@ -335,7 +344,7 @@ measurement that would change that.*
   *Mitigate:* ship only the redundant, conventional, print-safe encodings in §3.1.1;
   the exotic ones are parked in §7 / the design appendix, not the v1.
 - **Webapp scope creep.** "Maybe a webapp" can swallow the project. *Mitigate:* the
-  implemented slice is JSON projection plus one static SVAJ SVG; richer SVG
+  implemented slice is JSON projection plus one overlap-centered static SVAJ SVG; richer SVG
   exports and any webapp are gated on a real trigger (§7) and inherit the identical
   specs for free.
 

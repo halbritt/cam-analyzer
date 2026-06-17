@@ -41,13 +41,33 @@ def test_valve_lift_svg_uses_projection_provenance_styles() -> None:
     assert '<title id="chart-title">Test cam</title>' in svg
     assert 'stroke="#2563eb"' in svg
     assert 'stroke="#dc2626"' in svg
-    assert 'stroke-dasharray="6 4"' in svg
-    assert 'stroke-dasharray="12 7"' in svg
+    assert 'stroke-dasharray="7 5"' in svg
+    assert 'stroke-dasharray="1 6"' in svg
     assert "cam_analyzer.visualization_projection.v1" in svg
+    assert "-180" in svg
+    assert "+180" in svg
+    assert "0 TDC" in svg
+    assert "IO @ 0.050 in -9.5" in svg
+    assert "IC @ 0.050 in +48.5" in svg
+    assert "EO @ 0.050 in -47.5" in svg
+    assert "EC @ 0.050 in +18.5" in svg
+    assert "0.001" in svg
+    assert "0.006" in svg
+    assert "0.020" in svg
+    assert "0.050" in svg
+    assert "0.100" in svg
+    assert "0.200" in svg
+    assert "Timing Summary (@ 0.050 in)" in svg
+    assert "Overlap Summary" in svg
+    assert "Duration Summary (deg)" in svg
+    assert "Profile Quality" in svg
+    assert "Validation" in svg
+    assert "Secondary 720 deg overview" in svg
     assert "Velocity (in/deg)" in svg
     assert "Acceleration (in/deg^2)" in svg
     assert "Jerk (in/deg^3)" in svg
-    assert 'data-confidence="95"' in svg
+    assert 'data-confidence="p95"' in svg
+    assert 'data-confidence="p50"' in svg
 
 
 def test_valve_lift_svg_footer_does_not_overlap_provenance_legend() -> None:

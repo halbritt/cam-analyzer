@@ -74,7 +74,7 @@ def test_short_segments_coalesce_toward_weaker_provenance() -> None:
     assert len(segments) == 1
     assert segments[0].tag is Provenance.EXTRAPOLATED
     assert segments[0].x_range == (0.0, 30.0)
-    assert segments[0].style.stroke == "long-dash"
+    assert segments[0].style.stroke == "dotted"
     assert segments[0].style.draw_line is True
 
 
@@ -115,6 +115,6 @@ def test_style_legend_for_json_serializes_the_single_style_table() -> None:
     legend = style_legend_for_json()
 
     assert legend["INFERRED"]["stroke"] == "short-dash"
-    assert legend["EXTRAPOLATED"]["stroke"] == "long-dash"
+    assert legend["EXTRAPOLATED"]["stroke"] == "dotted"
     assert legend["UNDECIDABLE"]["band_fill"] == "cross-hatch"
     assert legend["UNDECIDABLE"]["draw_line"] is False

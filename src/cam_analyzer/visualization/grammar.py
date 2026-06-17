@@ -10,7 +10,7 @@ from typing import Final, Iterable, Literal, Mapping, Sequence, TypeAlias
 from cam_analyzer.profile.provenance_map import ProvenanceMap
 from cam_analyzer.quantity import Provenance, Refusal
 
-Stroke: TypeAlias = Literal["solid", "short-dash", "long-dash", "none"]
+Stroke: TypeAlias = Literal["solid", "short-dash", "dotted", "none"]
 Marker: TypeAlias = Literal["filled", "half-filled", "hollow", "none"]
 BandFill: TypeAlias = Literal["none", "light", "hatched", "cross-hatch"]
 
@@ -66,10 +66,10 @@ _STYLE_TABLE: Final[dict[SegmentTag, ProvenanceStyle]] = {
         draw_line=True,
     ),
     Provenance.EXTRAPOLATED: ProvenanceStyle(
-        stroke="long-dash",
+        stroke="dotted",
         opacity=0.45,
         marker="hollow",
-        band_fill="hatched",
+        band_fill="light",
         draw_line=True,
     ),
     RenderingTag.UNDECIDABLE: ProvenanceStyle(

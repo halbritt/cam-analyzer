@@ -167,7 +167,7 @@ def _chart_projection_from_card_data(
             ProfileProjectionInput("intake", profiles.intake),
             ProfileProjectionInput("exhaust", profiles.exhaust),
         ),
-        sample_degrees=_chart_sample_degrees(chart_step_deg),
+        sample_degrees=_chart_sample_degrees(chart_step_deg, card),
         event_lifts=timing_lifts,
     )
     projection["provenance_legend"] = style_legend_for_json()
@@ -220,17 +220,27 @@ def _lobe_to_mapping(lobe: CamLobeSpec) -> dict[str, float]:
     }
 
 
-def _chart_sample_degrees(step_deg: float) -> tuple[float, ...]:
+def _chart_sample_degrees(step_deg: float, card: CamCard) -> tuple[float, ...]:
     if step_deg <= 0.0:
         raise ValueError("--chart-step-deg must be positive")
-    degrees: list[float] = []
+    degrees: set[float] = set(_hard_event_degrees(card))
     current = 0.0
     while current < 720.0:
-        degrees.append(round(current, 9))
+        degrees.add(round(current, 9))
         current += step_deg
-    if not degrees or degrees[-1] != 720.0:
-        degrees.append(720.0)
-    return tuple(degrees)
+    degrees.add(720.0)
+    return tuple(sorted(degrees))
+
+
+def _hard_event_degrees(card: CamCard) -> tuple[float, ...]:
+    intake_center = card.intake.lobe_center_deg % 720.0
+    exhaust_center = (-card.exhaust.lobe_center_deg) % 720.0
+    return (
+        (intake_center - card.intake.duration_050_deg / 2.0) % 720.0,
+        (intake_center + card.intake.duration_050_deg / 2.0) % 720.0,
+        (exhaust_center - card.exhaust.duration_050_deg / 2.0) % 720.0,
+        (exhaust_center + card.exhaust.duration_050_deg / 2.0) % 720.0,
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:

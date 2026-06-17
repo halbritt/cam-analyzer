@@ -85,7 +85,7 @@ def test_render_chart_projection_from_card_data_contains_stamped_samples() -> No
     assert "echarts_ssr_adapter" in projection["deferred"]
     assert "chart_suite_svg_export" in projection["deferred"]
     assert projection["provenance_legend"]["INFERRED"]["stroke"] == "short-dash"
-    assert projection["provenance_legend"]["EXTRAPOLATED"]["stroke"] == "long-dash"
+    assert projection["provenance_legend"]["EXTRAPOLATED"]["stroke"] == "dotted"
     assert projection["provenance_legend"]["UNDECIDABLE"]["draw_line"] is False
 
     intake = projection["profiles"][0]
@@ -119,8 +119,11 @@ def test_render_svg_chart_from_card_data_draws_the_test_cam_lift_overlay() -> No
     assert "Exhaust" in svg
     assert "INFERRED" in svg
     assert "EXTRAPOLATED" in svg
-    assert 'stroke-dasharray="6 4"' in svg
-    assert 'stroke-dasharray="12 7"' in svg
+    assert "Timing Summary (@ 0.050 in)" in svg
+    assert "Overlap Summary" in svg
+    assert "IO @ 0.050 in -9.5" in svg
+    assert 'stroke-dasharray="7 5"' in svg
+    assert 'stroke-dasharray="1 6"' in svg
     assert "Renderer draws only sampled boundary answers" in svg
 
 
