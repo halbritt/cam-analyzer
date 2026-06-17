@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from cam_analyzer.profile.canonical import CanonicalCamProfile, CanonicalLiftModel, LiftOperator
 from cam_analyzer.profile.provenance_map import ProvenanceMap
@@ -86,8 +86,11 @@ class CamCardProfiles:
     exhaust: CanonicalCamProfile
 
 
-class SinePowerCamCardOperator(LiftOperator):
+class SinePowerCamCardOperator:
     """Sine-power cam-card approximation fitted to the published card.
+
+    Satisfies :class:`LiftOperator` structurally, not by subclassing (#6); the
+    static conformance check lives at the foot of this module.
 
     A fixed ``sin^2`` half-sine cannot fit both advertised duration and the
     duration at 0.050 in for the reference card. This operator uses the named
@@ -319,6 +322,13 @@ def _centerline_crank_deg(lobe: CamLobeSpec, side: CamSide) -> float:
     if side == "intake":
         return lobe.lobe_center_deg % 720.0
     return (-lobe.lobe_center_deg) % 720.0
+
+
+if TYPE_CHECKING:
+    # Static structural-conformance check (#6): mypy errors here if the operator
+    # stops satisfying the LiftOperator Protocol.
+    def _assert_sine_power_is_a_lift_operator(op: SinePowerCamCardOperator) -> LiftOperator:
+        return op
 
 
 __all__ = [

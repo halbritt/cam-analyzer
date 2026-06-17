@@ -2,21 +2,47 @@
 
 from __future__ import annotations
 
+import ast
+import inspect
+import os
+import shutil
+import subprocess
+import sys
 from collections.abc import Mapping
 from importlib import import_module
+from importlib.util import find_spec
+from pathlib import Path
 from typing import Any, Callable
 
 import pytest
 
+import cam_analyzer.quantity as quantity_module
 from cam_analyzer.conformance import CORPUS
-from cam_analyzer.quantity import Angle, Provenance, Quantity
+from cam_analyzer.quantity import Angle, Provenance, Quantity, extrapolated, inferred, measured
 
 _EXECUTABLE_TRAPS = {
     "advertised_lt_050",
     "fabricated_nose_as_measured",
     "sparse_as_continuous",
     "analysis_imports_source",
+    "mm_labeled_as_inch",
+    "quantity_unsealed_construction",
+    "provenance_as_argument",
+    "measured_confined_to_sources",
+    "cam_angle_as_crank",
 }
+
+_PACKAGE_ROOT = Path(quantity_module.__file__).resolve().parent  # .../src/cam_analyzer
+_REPO_ROOT = _PACKAGE_ROOT.parents[1]
+# MEASURED is conferred only by the source layer plus the spec-policy authority;
+# quantity.py is where the factory is defined.
+_MEASURED_ALLOWED_FILES = frozenset(
+    {
+        _PACKAGE_ROOT / "quantity.py",
+        _PACKAGE_ROOT / "analysis" / "safety.py",
+    }
+)
+_MEASURED_ALLOWED_DIR = _PACKAGE_ROOT / "sources"
 
 
 def _optional_import(module_name: str) -> Any | None:
@@ -160,3 +186,93 @@ def test_sparse_as_continuous_refuses_eight_point_lookup() -> None:
         return canonical.CanonicalCamProfile(model).lift_at(Angle.crank(45.0))
 
     _assert_refused_or_unconstructable(query_sparse_midpoint)
+
+
+# --- RFC 0001 Pillar A — sealed construction (C3) ----------------------------
+
+
+def test_quantity_unsealed_construction_is_rejected() -> None:
+    # The old fabricable 4-arg Quantity(...) cannot construct: the module-private
+    # mint token is required, so MEASURED can't be minted from nothing and a
+    # value's provenance can't be raised by reconstructing it.
+    with pytest.raises(TypeError):
+        Quantity(0.360, "inch", "valve_side", Provenance.MEASURED)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        Quantity(0.360, "inch", "valve_side", Provenance.MEASURED, object())
+
+
+def test_no_public_value_factory_confers_provenance_by_argument() -> None:
+    # The blessed acquisition factories bake provenance into the NAME, never a param.
+    for factory in (measured, inferred, extrapolated):
+        assert "provenance" not in inspect.signature(factory).parameters, factory.__name__
+    # No other *public* callable in the value module that returns a Quantity may
+    # take a provenance argument (the private keyed mint `_mint` is exempt).
+    offenders: list[str] = []
+    for name, obj in vars(quantity_module).items():
+        if name.startswith("_") or not callable(obj):
+            continue
+        try:
+            signature = inspect.signature(obj)
+        except (TypeError, ValueError):
+            continue
+        return_annotation = signature.return_annotation
+        returns_quantity = isinstance(return_annotation, str) and "Quantity" in return_annotation
+        if returns_quantity and "provenance" in signature.parameters:
+            offenders.append(name)
+    assert not offenders, f"public value factories must not accept provenance=: {offenders}"
+
+
+def test_measured_conferral_is_confined_to_the_source_layer() -> None:
+    offenders: list[str] = []
+    for path in _PACKAGE_ROOT.rglob("*.py"):
+        if path in _MEASURED_ALLOWED_FILES or _MEASURED_ALLOWED_DIR in path.parents:
+            continue
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                called = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+                if called == "measured":
+                    offenders.append(f"{path.relative_to(_PACKAGE_ROOT)}:{node.lineno}")
+    assert not offenders, (
+        "measured() (MEASURED conferral) may only be called in the source layer or the "
+        f"spec-policy authority (analysis/safety.py); found: {offenders}"
+    )
+
+
+# --- RFC 0001 Pillar B — phantom-typed units (C6) ----------------------------
+
+
+def _mypy_command() -> list[str] | None:
+    found = shutil.which("mypy")
+    if found:
+        return [found]
+    if find_spec("mypy") is not None:
+        return [sys.executable, "-m", "mypy"]
+    return None
+
+
+def test_phantom_types_make_unit_and_frame_errors() -> None:
+    # mm + inch and cam-as-crank must be *type* errors, not runtime hope (traps
+    # mm_labeled_as_inch / cross_unit_is_a_type_error and cam_angle_as_crank). Runs
+    # the typing fixture through mypy and checks exactly the two illegal lines fail
+    # while their legal counterparts type-check.
+    mypy_command = _mypy_command()
+    if mypy_command is None:
+        pytest.skip("mypy is not installed in this environment (pip install -e '.[dev]')")
+    fixture = Path(__file__).resolve().parent / "typing" / "phantom_type_traps.py"
+    environment = {**os.environ, "MYPYPATH": str(_REPO_ROOT / "src")}
+    result = subprocess.run(
+        [*mypy_command, "--strict", "--no-incremental", "--explicit-package-bases", str(fixture)],
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO_ROOT),
+        env=environment,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode != 0, f"phantom-type traps unexpectedly type-checked:\n{output}"
+    assert "Unsupported operand types for +" in output, output
+    assert "Quantity[Mm]" in output and "Quantity[Inch]" in output, output
+    assert 'incompatible type "Angle[Cam]"' in output, output
+    # Exactly the two illegal lines fail; the legal same-unit / crank cases pass.
+    assert "Found 2 errors" in output, f"a legal case unexpectedly failed:\n{output}"

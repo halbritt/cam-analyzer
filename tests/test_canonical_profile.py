@@ -5,7 +5,7 @@ import pytest
 from cam_analyzer.profile import AnalysisKind
 from cam_analyzer.profile.canonical import CanonicalCamProfile, CanonicalLiftModel
 from cam_analyzer.profile.provenance_map import ProvenanceMap
-from cam_analyzer.quantity import Angle, ProvFloat, Provenance, Refusal
+from cam_analyzer.quantity import Angle, Inch, Provenance, Quantity, Refusal, inferred
 
 
 class TinyTriangularOperator:
@@ -70,7 +70,7 @@ def test_lift_and_supported_derivative_are_stamped_from_operator_and_map() -> No
     assert lift.unit == "inch"
     assert lift.frame == "valve_side"
     assert lift.provenance is Provenance.MEASURED
-    assert isinstance(velocity, ProvFloat)
+    assert isinstance(velocity, Quantity)
     assert float(velocity) == pytest.approx(0.01)
     assert velocity.unit == "inch_per_deg"
     assert velocity.provenance is Provenance.INFERRED
@@ -92,11 +92,11 @@ def test_unsupported_derivative_returns_refusal_without_evaluating_derivative() 
 
 def test_reduction_queries_scan_and_integrate_the_same_operator() -> None:
     profile = _profile(TinyTriangularOperator())
-    lift = ProvFloat.inch(0.5, Provenance.INFERRED)
+    lift = inferred(0.5, Inch, "valve_side")
 
     events = profile.events_at_lift(lift)
     duration = profile.duration_at_lift(lift)
-    seat_duration = profile.duration_at_lift(ProvFloat.inch(0.0, Provenance.INFERRED))
+    seat_duration = profile.duration_at_lift(inferred(0.0, Inch, "valve_side"))
     max_lift = profile.max_lift()
     area = profile.area_under_curve()
 

@@ -7,7 +7,19 @@ from cam_analyzer.analysis.dynamic_compression import (
     dynamic_compression_ratio,
 )
 from cam_analyzer.profile import AnalysisKind
-from cam_analyzer.quantity import Angle, Provenance, Quantity, Refusal
+from cam_analyzer.quantity import (
+    Angle,
+    Inch,
+    InchDeg,
+    InchPerDeg,
+    InchPerDeg2,
+    InchPerDeg3,
+    Provenance,
+    Quantity,
+    Refusal,
+    extrapolated,
+    inferred,
+)
 from cam_analyzer.sources.cam_card import CamCard, profiles_from_cam_card
 
 
@@ -17,16 +29,18 @@ class IntakeClosingProfile:
 
     def lift_at(self, angle: Angle) -> Quantity:
         provenance = self._closing_provenance if angle == Angle.crank(228.5) else Provenance.INFERRED
-        return Quantity(0.050, "inch", "valve_side", provenance)
+        # White-box test double: stamp a runtime-chosen provenance the way the
+        # profile facade does, via the keyed projection mint.
+        return Quantity._mint(0.050, "inch", "valve_side", provenance)
 
     def velocity_at(self, angle: Angle) -> Quantity:
-        return Quantity(0.0, "inch_per_deg", "valve_side", Provenance.EXTRAPOLATED)
+        return extrapolated(0.0, InchPerDeg, "valve_side")
 
     def acceleration_at(self, angle: Angle) -> Quantity:
-        return Quantity(0.0, "inch_per_deg2", "valve_side", Provenance.EXTRAPOLATED)
+        return extrapolated(0.0, InchPerDeg2, "valve_side")
 
     def jerk_at(self, angle: Angle) -> Quantity:
-        return Quantity(0.0, "inch_per_deg3", "valve_side", Provenance.EXTRAPOLATED)
+        return extrapolated(0.0, InchPerDeg3, "valve_side")
 
     def events_at_lift(self, lift: Quantity) -> list[Angle]:
         return [Angle.crank(710.5), Angle.crank(228.5)]
@@ -35,10 +49,10 @@ class IntakeClosingProfile:
         return Angle.crank(238.0)
 
     def max_lift(self) -> Quantity:
-        return Quantity(0.360, "inch", "valve_side", Provenance.INFERRED)
+        return inferred(0.360, Inch, "valve_side")
 
     def area_under_curve(self) -> Quantity:
-        return Quantity(42.0, "inch_deg", "valve_side", Provenance.INFERRED)
+        return inferred(42.0, InchDeg, "valve_side")
 
     def is_good_enough_for(self, kind: AnalysisKind) -> bool:
         return kind in {AnalysisKind.DCR, AnalysisKind.REPORT}
@@ -48,7 +62,7 @@ def _input(*, allow_extrapolated: bool = False, rod_length: float = 96.9) -> Dyn
     return DynamicCompressionInput(
         static_compression_ratio=12.8,
         geometry=EngineGeometry.from_mm(bore=77.0, stroke=53.6, rod_length=rod_length),
-        closing_lift=Quantity(0.050, "inch", "valve_side", Provenance.INFERRED),
+        closing_lift=inferred(0.050, Inch, "valve_side"),
         allow_extrapolated=allow_extrapolated,
     )
 

@@ -13,7 +13,7 @@ import math
 import pytest
 
 from cam_analyzer.profile import AnalysisKind
-from cam_analyzer.quantity import Angle, ProvFloat, Provenance, Refusal
+from cam_analyzer.quantity import Angle, Quantity, Provenance, Refusal
 from cam_analyzer.sources.cam_card import CamCard, profiles_from_cam_card
 
 _CARD = CamCard.wr250r_reference()
@@ -32,8 +32,8 @@ def test_approximate_profile_returns_extrapolated_acceleration_and_jerk() -> Non
     accel = intake.acceleration_at(_MIDFLANK)
     jerk = intake.jerk_at(_MIDFLANK)
 
-    assert isinstance(accel, ProvFloat) and not isinstance(accel, Refusal)
-    assert isinstance(jerk, ProvFloat) and not isinstance(jerk, Refusal)
+    assert isinstance(accel, Quantity) and not isinstance(accel, Refusal)
+    assert isinstance(jerk, Quantity) and not isinstance(jerk, Refusal)
     assert accel.provenance is Provenance.EXTRAPOLATED
     assert jerk.provenance is Provenance.EXTRAPOLATED
     assert accel.unit == "inch_per_deg2"
@@ -47,8 +47,8 @@ def test_supported_velocity_is_unchanged_by_the_flag() -> None:
     # only affects otherwise-refused orders, never the supported path.
     strict = profiles_from_cam_card(_CARD).intake.velocity_at(_MIDFLANK)
     approx = profiles_from_cam_card(_CARD, approximate_derivatives=True).intake.velocity_at(_MIDFLANK)
-    assert isinstance(strict, ProvFloat) and strict.provenance is Provenance.INFERRED
-    assert isinstance(approx, ProvFloat) and approx.provenance is Provenance.INFERRED
+    assert isinstance(strict, Quantity) and strict.provenance is Provenance.INFERRED
+    assert isinstance(approx, Quantity) and approx.provenance is Provenance.INFERRED
     assert float(strict) == float(approx)
 
 
@@ -67,7 +67,7 @@ def test_approximate_velocity_in_the_nose_is_extrapolated() -> None:
     strict_nose = profiles_from_cam_card(_CARD).intake.velocity_at(nose)
     approx_nose = intake.velocity_at(nose)
     assert isinstance(strict_nose, Refusal)
-    assert isinstance(approx_nose, ProvFloat) and approx_nose.provenance is Provenance.EXTRAPOLATED
+    assert isinstance(approx_nose, Quantity) and approx_nose.provenance is Provenance.EXTRAPOLATED
 
 
 @pytest.mark.parametrize("order_method", ["acceleration_at", "jerk_at"])

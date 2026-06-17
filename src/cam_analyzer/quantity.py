@@ -1,20 +1,37 @@
-"""Stamped scalar values for the CamProfile boundary.
+"""Sealed, phantom-typed stamped values for the CamProfile boundary (RFC 0001).
 
-``ProvFloat`` is the D012 value shape: it behaves like a float for ordinary
-math, but carries the unit, frame, and provenance that make the number honest.
-The only way to discard the stamp is the explicit, grep-able ``float(x)``.
+A :class:`Quantity` is the value shape the boundary speaks: a magnitude in a
+unit/frame carrying the :class:`Provenance` that says whether the number was
+``MEASURED``, ``INFERRED``, or ``EXTRAPOLATED``. Two honesty invariants are
+enforced by *mechanism*, not convention:
+
+* **Sealed construction (Pillar A / C3).** ``Quantity`` cannot be built directly;
+  the constructor demands a module-private mint token. Provenance is *conferred*
+  by acquisition factories (:func:`measured` / :func:`inferred` /
+  :func:`extrapolated`) and only ever *descends* through combinators (arithmetic
+  min-joins its inputs). No public callable accepts a ``provenance=`` argument, so
+  a value can neither fabricate ``MEASURED`` from nothing nor raise its own
+  provenance by being reconstructed. ``measured()`` confers the strongest stamp
+  and is confined to the source layer (see ``tests/test_conformance_traps.py``).
+* **Phantom-typed units & frames (Pillar B / C6).** The unit is a *type parameter*
+  ``U`` (an empty marker class), so ``mm(5) + inch(1)`` is a ``mypy`` error, not a
+  runtime hope; angles are phantom-typed by frame (``Angle[Crank]`` /
+  ``Angle[Cam]``) so a cam angle passed where a crank angle is required is a type
+  error too.
+
+There is no ``.magnitude`` escape hatch. The one grep-able exit to a bare scalar
+is ``float(x)``; rendering goes through ``__format__``/``__str__``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, IntEnum
-from typing import Literal, TypeAlias, cast
+from typing import Any, ClassVar, Final, Generic, Literal, TypeAlias, TypeVar
 
 
 class Provenance(IntEnum):
-    """How a value came to be. Ordered: MEASURED is strongest."""
+    """How a value came to be. Ordered: MEASURED is strongest (min-join descends)."""
 
     EXTRAPOLATED = 0
     INFERRED = 1
@@ -22,186 +39,181 @@ class Provenance(IntEnum):
 
     @staticmethod
     def join(*values: "Provenance") -> "Provenance":
-        """Return the weakest provenance among all inputs."""
+        """Return the weakest provenance among all inputs (the lattice meet)."""
         if not values:
             raise ValueError("join requires at least one provenance")
         return Provenance(min(int(v) for v in values))
 
 
-Unit: TypeAlias = str
+# --- Phantom unit tags -------------------------------------------------------
+# Empty marker classes that exist only at the type level. They never get
+# instantiated; their ``symbol`` is the runtime unit string a factory stamps.
+class UnitTag:
+    """Base for phantom unit markers; ``symbol`` is the runtime unit string."""
+
+    symbol: ClassVar[str] = "?"
+
+
+class Inch(UnitTag):
+    symbol = "inch"
+
+
+class Mm(UnitTag):
+    symbol = "mm"
+
+
+class Ratio(UnitTag):
+    symbol = "ratio"
+
+
+class InchPerDeg(UnitTag):
+    symbol = "inch_per_deg"
+
+
+class InchPerDeg2(UnitTag):
+    symbol = "inch_per_deg2"
+
+
+class InchPerDeg3(UnitTag):
+    symbol = "inch_per_deg3"
+
+
+class InchDeg(UnitTag):
+    symbol = "inch_deg"
+
+
+U = TypeVar("U", bound=UnitTag)
+
+Unit: TypeAlias = str  # runtime unit string (kept for messages / back-compat)
 Frame: TypeAlias = str
-_Stamp: TypeAlias = tuple[Unit, Frame, Provenance]
+
+_MINT: Final = object()  # module-private mint token; never exported
 
 
-def _unsupported_operand() -> "ProvFloat":
-    # Binary dunders need this sentinel; mypy types float overrides as float-only.
-    return cast("ProvFloat", NotImplemented)
+@dataclass(frozen=True, repr=False)
+class Quantity(Generic[U]):
+    """A sealed, phantom-typed stamped scalar.
 
-
-class ProvFloat(float):
-    """A float subclass carrying provenance, unit, and frame.
-
-    Arithmetic with another ``ProvFloat`` requires matching unit/frame and
-    propagates the weakest provenance. Arithmetic with a plain number keeps the
-    stamped operand's metadata; explicit unit conversion remains a boundary
-    concern, not an implicit arithmetic side effect.
+    The phantom ``U`` carries the unit at the type level; ``unit``/``frame`` carry
+    it at runtime for messages and the defence-in-depth compatibility check.
+    Construct only via the acquisition factories or arithmetic combinators — the
+    ``_token`` seal makes a bare ``Quantity(...)`` raise.
     """
 
-    __slots__ = ("_sealed", "frame", "provenance", "unit")
-
-    unit: Unit
-    frame: Frame
+    _value: float
+    unit: str
+    frame: str
     provenance: Provenance
-    _sealed: bool
+    _token: object = field(compare=False)
 
-    def __new__(
-        cls,
-        magnitude: float,
-        unit: Unit,
-        frame: Frame,
-        provenance: Provenance,
-    ) -> "ProvFloat":
-        obj = float.__new__(cls, magnitude)
-        object.__setattr__(obj, "_sealed", False)
-        object.__setattr__(obj, "unit", unit)
-        object.__setattr__(obj, "frame", frame)
-        object.__setattr__(obj, "provenance", provenance)
-        object.__setattr__(obj, "_sealed", True)
-        return obj
-
-    def __setattr__(self, name: str, value: object) -> None:
-        if getattr(self, "_sealed", False):
-            raise AttributeError("ProvFloat is immutable")
-        object.__setattr__(self, name, value)
-
-    @classmethod
-    def inch(cls, magnitude: float, provenance: Provenance) -> "ProvFloat":
-        return cls(magnitude, "inch", "valve_side", provenance)
-
-    @classmethod
-    def degree(cls, magnitude: float, provenance: Provenance) -> "ProvFloat":
-        return cls(magnitude, "deg", "crank", provenance)
-
-    @classmethod
-    def ratio(cls, magnitude: float, provenance: Provenance) -> "ProvFloat":
-        return cls(magnitude, "ratio", "dimensionless", provenance)
-
-    def _metadata_for(self, other: object) -> _Stamp | None:
-        if isinstance(other, ProvFloat):
-            self._require_compatible(other)
-            return (
-                self.unit,
-                self.frame,
-                Provenance.join(self.provenance, other.provenance),
+    def __post_init__(self) -> None:
+        if self._token is not _MINT:
+            raise TypeError(
+                "Quantity is sealed; mint via measured()/inferred()/extrapolated() "
+                "or an arithmetic combinator, never by direct construction"
             )
-        if isinstance(other, (int, float)):
-            return self.unit, self.frame, self.provenance
-        return None
 
-    def _require_compatible(self, other: "ProvFloat") -> None:
+    @classmethod
+    def _mint(cls, value: float, unit: str, frame: str, provenance: Provenance) -> "Quantity[Any]":
+        """The single keyed construction point (projection / combinator mint)."""
+        return cls(value, unit, frame, provenance, _MINT)
+
+    # ---- the one grep-able exit ----
+    def __float__(self) -> float:
+        return self._value
+
+    # ---- combinators: arithmetic descends provenance, never raises it ----
+    def _require_compatible(self, other: "Quantity[Any]") -> None:
         if self.unit != other.unit or self.frame != other.frame:
             raise ValueError(
                 f"incompatible stamped values: ({self.unit},{self.frame}) vs "
                 f"({other.unit},{other.frame}); convert explicitly at the boundary"
             )
 
-    @staticmethod
-    def _numeric_operand(operand: object) -> float | None:
-        if isinstance(operand, (int, float)):
-            return float(operand)
-        return None
-
-    @staticmethod
-    def _wrap(magnitude: float, unit: Unit, frame: Frame, provenance: Provenance) -> "ProvFloat":
-        return ProvFloat(magnitude, unit, frame, provenance)
-
-    def _binary_operation(
-        self,
-        other: object,
-        operation: Callable[[float, float], float],
-    ) -> "ProvFloat":
-        metadata = self._metadata_for(other)
-        operand = self._numeric_operand(other)
-        if metadata is None or operand is None:
-            return _unsupported_operand()
-        unit, frame, provenance = metadata
-        return self._wrap(operation(float(self), operand), unit, frame, provenance)
-
-    def _reverse_plain_operation(
-        self,
-        other: object,
-        operation: Callable[[float, float], float],
-    ) -> "ProvFloat":
-        operand = self._numeric_operand(other)
-        if operand is None:
-            return _unsupported_operand()
-        return self._wrap(operation(operand, float(self)), self.unit, self.frame, self.provenance)
-
-    def __add__(self, other: object) -> "ProvFloat":
-        return self._binary_operation(other, lambda left, right: left + right)
-
-    def __radd__(self, other: object) -> "ProvFloat":
-        return self.__add__(other)
-
-    def __sub__(self, other: object) -> "ProvFloat":
-        return self._binary_operation(other, lambda left, right: left - right)
-
-    def __rsub__(self, other: object) -> "ProvFloat":
-        return self._reverse_plain_operation(other, lambda left, right: left - right)
-
-    def __mul__(self, other: object) -> "ProvFloat":
-        return self._binary_operation(other, lambda left, right: left * right)
-
-    def __rmul__(self, other: object) -> "ProvFloat":
-        return self.__mul__(other)
-
-    def __truediv__(self, other: object) -> "ProvFloat":
-        return self._binary_operation(other, lambda left, right: left / right)
-
-    def __rtruediv__(self, other: object) -> "ProvFloat":
-        return self._reverse_plain_operation(other, lambda left, right: left / right)
-
-    def __neg__(self) -> "ProvFloat":
-        return self._wrap(-float(self), self.unit, self.frame, self.provenance)
-
-    def __pos__(self) -> "ProvFloat":
-        return self._wrap(+float(self), self.unit, self.frame, self.provenance)
-
-    def __abs__(self) -> "ProvFloat":
-        return self._wrap(abs(float(self)), self.unit, self.frame, self.provenance)
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ProvFloat):
-            return False
-        return (
-            float(self) == float(other)
-            and self.unit == other.unit
-            and self.frame == other.frame
-            and self.provenance == other.provenance
+    def __add__(self, other: "Quantity[U]") -> "Quantity[U]":
+        if not isinstance(other, Quantity):
+            return NotImplemented
+        self._require_compatible(other)
+        return Quantity._mint(
+            self._value + other._value,
+            self.unit,
+            self.frame,
+            Provenance.join(self.provenance, other.provenance),
         )
 
-    def __ne__(self, other: object) -> bool:
-        return not self.__eq__(other)
+    def __sub__(self, other: "Quantity[U]") -> "Quantity[U]":
+        if not isinstance(other, Quantity):
+            return NotImplemented
+        self._require_compatible(other)
+        return Quantity._mint(
+            self._value - other._value,
+            self.unit,
+            self.frame,
+            Provenance.join(self.provenance, other.provenance),
+        )
 
-    def __hash__(self) -> int:
-        return hash((float(self), self.unit, self.frame, self.provenance))
+    def __mul__(self, ratio: float) -> "Quantity[U]":
+        if isinstance(ratio, Quantity):
+            return NotImplemented
+        return Quantity._mint(self._value * ratio, self.unit, self.frame, self.provenance)
 
+    def __rmul__(self, ratio: float) -> "Quantity[U]":
+        return self.__mul__(ratio)
+
+    def __truediv__(self, ratio: float) -> "Quantity[U]":
+        if isinstance(ratio, Quantity):
+            return NotImplemented
+        return Quantity._mint(self._value / ratio, self.unit, self.frame, self.provenance)
+
+    def __neg__(self) -> "Quantity[U]":
+        return Quantity._mint(-self._value, self.unit, self.frame, self.provenance)
+
+    def __pos__(self) -> "Quantity[U]":
+        return Quantity._mint(+self._value, self.unit, self.frame, self.provenance)
+
+    def __abs__(self) -> "Quantity[U]":
+        return Quantity._mint(abs(self._value), self.unit, self.frame, self.provenance)
+
+    # ---- display (no bare-magnitude grab leaks here) ----
     def __repr__(self) -> str:
         return (
-            f"ProvFloat({float(self)!r}, unit={self.unit!r}, frame={self.frame!r}, "
+            f"Quantity({self._value!r}, unit={self.unit!r}, frame={self.frame!r}, "
             f"provenance={self.provenance.name})"
         )
 
     def __str__(self) -> str:
-        return f"{float(self)} [{self.provenance.name} {self.unit} {self.frame}]"
+        return f"{self._value} [{self.provenance.name} {self.unit} {self.frame}]"
 
     def __format__(self, spec: str) -> str:
-        return f"{format(float(self), spec)} [{self.provenance.name} {self.unit} {self.frame}]"
+        return f"{format(self._value, spec)} [{self.provenance.name} {self.unit} {self.frame}]"
 
 
-# Backward-compatible import name during the D012 transition. In-system code uses
-# ProvFloat directly; there is intentionally no .magnitude escape hatch.
-Quantity: TypeAlias = ProvFloat
+# --- Acquisition factories: the only public mints. Provenance is in the NAME,
+# never an argument, so no public callable can pick a value's provenance. -------
+def measured(magnitude: float, unit: type[U], frame: str) -> Quantity[U]:
+    """Confer ``MEASURED`` — a value that entered as an authoritative reading/spec.
+
+    Confined to the source layer (and the spec-policy authority); see the
+    ``measured_confined_to_sources`` conformance trap.
+    """
+    return Quantity._mint(magnitude, unit.symbol, frame, Provenance.MEASURED)
+
+
+def inferred(magnitude: float, unit: type[U], frame: str) -> Quantity[U]:
+    """Confer ``INFERRED`` — a value derived/declared, not directly measured."""
+    return Quantity._mint(magnitude, unit.symbol, frame, Provenance.INFERRED)
+
+
+def extrapolated(magnitude: float, unit: type[U], frame: str) -> Quantity[U]:
+    """Confer ``EXTRAPOLATED`` — the weakest stamp, a model-shaped ballpark."""
+    return Quantity._mint(magnitude, unit.symbol, frame, Provenance.EXTRAPOLATED)
+
+
+# Back-compat: ``ProvFloat`` was the float-subclass value name. It is now an
+# annotation alias for a unit-erased ``Quantity`` so existing annotations keep
+# compiling under ``--strict`` (explicit ``Any``, not a missing type parameter).
+# It is for annotations only — use the bare class ``Quantity`` for ``isinstance``.
+ProvFloat: TypeAlias = Quantity[Any]
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,7 +229,7 @@ class Refusal:
         return False
 
 
-Answer: TypeAlias = ProvFloat | Refusal
+Answer: TypeAlias = "Quantity[Any] | Refusal"
 
 
 class SafetyVerdict(Enum):
@@ -239,22 +251,44 @@ class VerdictResult:
     provenance: Provenance | None = None
 
 
-Result: TypeAlias = ProvFloat | Refusal | VerdictResult
+Result: TypeAlias = "Quantity[Any] | Refusal | VerdictResult"
 
 
-@dataclass(frozen=True, slots=True)
-class Angle:
-    """A phantom-typed crank/cam angle. Crank values are periodic over 720 deg."""
+# --- Phantom frame tags & the phantom-typed Angle ----------------------------
+class FrameTag:
+    """Base for phantom angle-frame markers; ``name`` is the runtime frame string."""
+
+    name: ClassVar[str] = "?"
+
+
+class Crank(FrameTag):
+    name = "crank"
+
+
+class Cam(FrameTag):
+    name = "cam"
+
+
+Fr = TypeVar("Fr", bound=FrameTag)
+
+
+@dataclass(frozen=True)
+class Angle(Generic[Fr]):
+    """A phantom-typed crank/cam angle. Crank values are periodic over 720 deg.
+
+    The phantom ``Fr`` makes ``lift_at(some_cam_angle)`` a ``mypy`` error; the
+    runtime ``frame`` string and :meth:`require_crank` remain as defence-in-depth.
+    """
 
     degrees: float
     frame: Literal["crank", "cam"]
 
     @staticmethod
-    def crank(degrees: float) -> "Angle":
+    def crank(degrees: float) -> "Angle[Crank]":
         return Angle(degrees % 720.0, "crank")
 
     @staticmethod
-    def cam(degrees: float) -> "Angle":
+    def cam(degrees: float) -> "Angle[Cam]":
         return Angle(degrees % 360.0, "cam")
 
     def require_crank(self) -> float:
@@ -266,13 +300,27 @@ class Angle:
 __all__ = [
     "Angle",
     "Answer",
+    "Cam",
+    "Crank",
     "Frame",
+    "FrameTag",
+    "Inch",
+    "InchDeg",
+    "InchPerDeg",
+    "InchPerDeg2",
+    "InchPerDeg3",
+    "Mm",
     "ProvFloat",
     "Provenance",
     "Quantity",
+    "Ratio",
     "Refusal",
     "Result",
     "SafetyVerdict",
     "Unit",
+    "UnitTag",
     "VerdictResult",
+    "extrapolated",
+    "inferred",
+    "measured",
 ]

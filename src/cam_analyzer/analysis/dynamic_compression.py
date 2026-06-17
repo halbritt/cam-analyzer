@@ -6,7 +6,17 @@ import math
 from dataclasses import dataclass
 
 from cam_analyzer.profile import CamProfile
-from cam_analyzer.quantity import Answer, Angle, ProvFloat, Provenance, Refusal
+from cam_analyzer.quantity import (
+    Angle,
+    Answer,
+    Crank,
+    Inch,
+    ProvFloat,
+    Provenance,
+    Quantity,
+    Refusal,
+    inferred,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +55,7 @@ class DynamicCompressionInput:
 class DynamicCompressionResult:
     ratio: ProvFloat
     effective_stroke: ProvFloat
-    intake_closing: Angle
+    intake_closing: Angle[Crank]
 
     @property
     def dynamic_compression_ratio(self) -> ProvFloat:
@@ -56,7 +66,7 @@ class DynamicCompressionResult:
         return self.effective_stroke
 
     @property
-    def intake_closing_angle(self) -> Angle:
+    def intake_closing_angle(self) -> Angle[Crank]:
         return self.intake_closing
 
 
@@ -73,7 +83,7 @@ def dynamic_compression_ratio(
         DynamicCompressionInput(
             static_compression_ratio=static_cr,
             geometry=EngineGeometry(bore_mm, stroke_mm, rod_length_mm),
-            closing_lift=ProvFloat(0.050, "inch", "valve_side", Provenance.INFERRED),
+            closing_lift=inferred(0.050, Inch, "valve_side"),
         ),
     )
     if isinstance(result, Refusal):
@@ -121,13 +131,13 @@ def analyze_dynamic_compression(
         inputs.static_compression_ratio - 1.0
     ) * (effective_stroke / inputs.geometry.stroke_mm)
     return DynamicCompressionResult(
-        ratio=ProvFloat.ratio(dcr, provenance),
-        effective_stroke=ProvFloat(effective_stroke, "mm", "engine", provenance),
+        ratio=Quantity._mint(dcr, "ratio", "dimensionless", provenance),
+        effective_stroke=Quantity._mint(effective_stroke, "mm", "engine", provenance),
         intake_closing=closing,
     )
 
 
-def _intake_closing_event(events: list[Angle]) -> Angle | None:
+def _intake_closing_event(events: list[Angle[Crank]]) -> Angle[Crank] | None:
     if not events:
         return None
     after_bdc = [event for event in events if 180.0 <= event.degrees <= 360.0]

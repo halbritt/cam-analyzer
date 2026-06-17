@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from cam_analyzer.profile import CamProfile
-from cam_analyzer.quantity import Angle, ProvFloat, Provenance
+from cam_analyzer.quantity import Angle, Crank, Inch, ProvFloat, inferred
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,26 +18,26 @@ class TimingEvents:
 
 @dataclass(frozen=True, slots=True)
 class TimingMap:
-    intake_centerline: Angle
-    exhaust_centerline: Angle
-    lobe_separation: Angle
+    intake_centerline: Angle[Crank]
+    exhaust_centerline: Angle[Crank]
+    lobe_separation: Angle[Crank]
     intake_events: TimingEvents
     exhaust_events: TimingEvents
 
 
 @dataclass(frozen=True, slots=True)
 class BasicTimingMap:
-    intake_centerline: Angle
-    exhaust_centerline: Angle
-    lobe_separation_angle: Angle
-    intake_events_by_lift: dict[float, tuple[Angle, ...]]
-    exhaust_events_by_lift: dict[float, tuple[Angle, ...]]
-    intake_duration_by_lift: dict[float, Angle]
-    exhaust_duration_by_lift: dict[float, Angle]
-    overlap_by_lift: dict[float, Angle]
+    intake_centerline: Angle[Crank]
+    exhaust_centerline: Angle[Crank]
+    lobe_separation_angle: Angle[Crank]
+    intake_events_by_lift: dict[float, tuple[Angle[Crank], ...]]
+    exhaust_events_by_lift: dict[float, tuple[Angle[Crank], ...]]
+    intake_duration_by_lift: dict[float, Angle[Crank]]
+    exhaust_duration_by_lift: dict[float, Angle[Crank]]
+    overlap_by_lift: dict[float, Angle[Crank]]
 
 
-def centerline(profile: CamProfile) -> Angle:
+def centerline(profile: CamProfile) -> Angle[Crank]:
     """Find max-lift centerline using only the C5 query surface."""
     peak_events = profile.events_at_lift(profile.max_lift())
     if peak_events:
@@ -65,7 +65,7 @@ def centerline(profile: CamProfile) -> Angle:
     return Angle.crank((lo + hi) / 2.0)
 
 
-def lobe_separation_angle(intake: CamProfile, exhaust: CamProfile) -> Angle:
+def lobe_separation_angle(intake: CamProfile, exhaust: CamProfile) -> Angle[Crank]:
     """Return the conventional lobe separation angle from source-blind peaks."""
     intake_center = centerline(intake).degrees
     exhaust_center = centerline(exhaust).degrees
@@ -75,7 +75,7 @@ def lobe_separation_angle(intake: CamProfile, exhaust: CamProfile) -> Angle:
     return Angle.crank(separation_across_tdc / 2.0)
 
 
-def overlap_at_lift(intake: CamProfile, exhaust: CamProfile, lift: ProvFloat) -> Angle:
+def overlap_at_lift(intake: CamProfile, exhaust: CamProfile, lift: ProvFloat) -> Angle[Crank]:
     """Crank degrees around overlap TDC where both valves exceed ``lift``."""
     total = 0.0
     for intake_start, intake_end in _open_intervals_at_lift(intake, lift):
@@ -110,7 +110,7 @@ def timing_map(
     exhaust: CamProfile,
     lift: ProvFloat | None = None,
 ) -> TimingMap:
-    threshold = lift or ProvFloat(0.050, "inch", "valve_side", Provenance.INFERRED)
+    threshold = lift or inferred(0.050, Inch, "valve_side")
     return TimingMap(
         intake_centerline=centerline(intake),
         exhaust_centerline=centerline(exhaust),
@@ -125,11 +125,11 @@ def basic_timing_map(
     exhaust: CamProfile,
     lifts: Iterable[ProvFloat],
 ) -> BasicTimingMap:
-    intake_events: dict[float, tuple[Angle, ...]] = {}
-    exhaust_events: dict[float, tuple[Angle, ...]] = {}
-    intake_durations: dict[float, Angle] = {}
-    exhaust_durations: dict[float, Angle] = {}
-    overlaps: dict[float, Angle] = {}
+    intake_events: dict[float, tuple[Angle[Crank], ...]] = {}
+    exhaust_events: dict[float, tuple[Angle[Crank], ...]] = {}
+    intake_durations: dict[float, Angle[Crank]] = {}
+    exhaust_durations: dict[float, Angle[Crank]] = {}
+    overlaps: dict[float, Angle[Crank]] = {}
 
     for lift in lifts:
         key = float(lift)
@@ -174,7 +174,7 @@ def _split_interval(start: float, end: float) -> list[tuple[float, float]]:
     return [(start, 720.0), (0.0, end - 720.0)]
 
 
-def _circular_mean(angles: Iterable[Angle]) -> Angle:
+def _circular_mean(angles: Iterable[Angle[Crank]]) -> Angle[Crank]:
     degrees = [angle.degrees % 720.0 for angle in angles]
     if not degrees:
         return Angle.crank(0.0)

@@ -13,7 +13,7 @@ from cam_analyzer.analysis.piston_to_valve import PistonToValveInput, evaluate_p
 from cam_analyzer.analysis.spring_safety import SpringSafetyInput, evaluate_spring_safety
 from cam_analyzer.analysis.timing import basic_timing_map
 from cam_analyzer.profile import CamProfile
-from cam_analyzer.quantity import Angle, ProvFloat, Refusal, SafetyVerdict
+from cam_analyzer.quantity import Angle, Crank, ProvFloat, Refusal, SafetyVerdict
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,11 +130,11 @@ def _format_value(value: ProvFloat | None) -> str:
     return f"{float(value):.3f} {value.unit} [{value.frame}, {value.provenance.name}]"
 
 
-def _format_angle(angle: Angle) -> str:
+def _format_angle(angle: Angle[Crank]) -> str:
     return f"{angle.degrees:.3f} deg [{angle.frame}]"
 
 
-def _format_angles(angles: Iterable[Angle]) -> str:
+def _format_angles(angles: Iterable[Angle[Crank]]) -> str:
     return ", ".join(_format_angle(angle) for angle in angles)
 
 

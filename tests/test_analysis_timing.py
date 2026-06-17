@@ -9,7 +9,17 @@ from cam_analyzer.analysis.timing import (
     overlap_at_lift,
 )
 from cam_analyzer.profile import AnalysisKind
-from cam_analyzer.quantity import Angle, Provenance, Quantity
+from cam_analyzer.quantity import (
+    Angle,
+    Inch,
+    InchDeg,
+    InchPerDeg,
+    InchPerDeg2,
+    InchPerDeg3,
+    Quantity,
+    extrapolated,
+    inferred,
+)
 
 
 class WindowProfile:
@@ -25,16 +35,16 @@ class WindowProfile:
             lift = 0.0
         else:
             lift = self._peak_lift * max(0.0, math.cos(math.radians(degrees - self._peak_deg)))
-        return Quantity(lift, "inch", "valve_side", Provenance.INFERRED)
+        return inferred(lift, Inch, "valve_side")
 
     def velocity_at(self, angle: Angle) -> Quantity:
-        return Quantity(0.0, "inch_per_deg", "valve_side", Provenance.EXTRAPOLATED)
+        return extrapolated(0.0, InchPerDeg, "valve_side")
 
     def acceleration_at(self, angle: Angle) -> Quantity:
-        return Quantity(0.0, "inch_per_deg2", "valve_side", Provenance.EXTRAPOLATED)
+        return extrapolated(0.0, InchPerDeg2, "valve_side")
 
     def jerk_at(self, angle: Angle) -> Quantity:
-        return Quantity(0.0, "inch_per_deg3", "valve_side", Provenance.EXTRAPOLATED)
+        return extrapolated(0.0, InchPerDeg3, "valve_side")
 
     def events_at_lift(self, lift: Quantity) -> list[Angle]:
         if float(lift) >= self._peak_lift:
@@ -47,10 +57,10 @@ class WindowProfile:
         return Angle.crank(720.0 - self._open_deg + self._close_deg)
 
     def max_lift(self) -> Quantity:
-        return Quantity(self._peak_lift, "inch", "valve_side", Provenance.INFERRED)
+        return inferred(self._peak_lift, Inch, "valve_side")
 
     def area_under_curve(self) -> Quantity:
-        return Quantity(42.0, "inch_deg", "valve_side", Provenance.INFERRED)
+        return inferred(42.0, InchDeg, "valve_side")
 
     def is_good_enough_for(self, kind: AnalysisKind) -> bool:
         return kind in {AnalysisKind.TIMING, AnalysisKind.OVERLAP, AnalysisKind.REPORT}
@@ -77,7 +87,7 @@ def test_lobe_separation_angle_uses_absolute_profile_centerlines() -> None:
 def test_overlap_at_lift_intersects_wrapping_open_windows() -> None:
     intake = WindowProfile(open_deg=710.5, close_deg=228.5, peak_deg=109.5, peak_lift=0.360)
     exhaust = WindowProfile(open_deg=492.5, close_deg=18.5, peak_deg=615.5, peak_lift=0.360)
-    lift = Quantity(0.050, "inch", "valve_side", Provenance.INFERRED)
+    lift = inferred(0.050, Inch, "valve_side")
 
     assert overlap_at_lift(intake, exhaust, lift) == Angle.crank(28.0)
 
@@ -85,7 +95,7 @@ def test_overlap_at_lift_intersects_wrapping_open_windows() -> None:
 def test_basic_timing_map_contains_centerlines_lsa_overlap_and_events() -> None:
     intake = WindowProfile(open_deg=710.5, close_deg=228.5, peak_deg=109.5, peak_lift=0.360)
     exhaust = WindowProfile(open_deg=492.5, close_deg=18.5, peak_deg=615.5, peak_lift=0.360)
-    lift = Quantity(0.050, "inch", "valve_side", Provenance.INFERRED)
+    lift = inferred(0.050, Inch, "valve_side")
 
     timing_map = basic_timing_map(intake, exhaust, (lift,))
 
