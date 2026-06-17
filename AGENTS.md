@@ -103,9 +103,11 @@ analysis cannot import the source layer. Keep it green.
   evidence changes the tradeoff.
 - Prefer repository-relative paths in docs and fixtures. Avoid hardcoded
   home-directory paths.
-- Commit and push often after coherent, validated slices. Prefer small commits
-  that leave the branch in a runnable state; if push or credentials are blocked,
-  record the exact blocker instead of leaving local work silently stranded.
+- Commit and push to `master` (the default branch) at the end of every turn;
+  never leave a dirty working tree. Prefer small commits that leave the branch in
+  a runnable state, and commit/push after each coherent, validated slice rather
+  than batching. If push or credentials are blocked, record the exact blocker
+  instead of leaving local work silently stranded.
 - Keep new source-specific parsing under `cam_analyzer.sources`; express every
   source as a `CanonicalLiftModel` plus one named operator, then expose it
   through `CanonicalCamProfile`.
