@@ -33,13 +33,19 @@ sources.** See [`tests/test_architecture_boundary.py`](tests/test_architecture_b
 Round 1 converged on these as *not competitors* but three facets of one design;
 adopt them together. Full rationale: [`docs/design/ROUND1_SYNTHESIS.md`](docs/design/ROUND1_SYNTHESIS.md).
 
-- **A · Typed provenance boundary** — `ProvFloat(value, unit, frame, provenance)`.
-  `provenance` is an `IntEnum` lattice `MEASURED > INFERRED > EXTRAPOLATED` so
-  `min()` *is* the join; arithmetic is defined only between matching `(unit, frame)`
-  stamped values and the result inherits the weakest input's stamp. The
-  compatibility name `Quantity` aliases `ProvFloat`; the normal in-system path
-  has no `.magnitude` field to strip. Relabeling inferred→measured is
-  **unconstructable**. Angles are phantom-typed `Angle[Crank|Cam]`.
+- **A · Typed provenance boundary** — a sealed, phantom-typed `Quantity[Unit]`
+  (RFC 0001). `provenance` is an `IntEnum` lattice `MEASURED > INFERRED >
+  EXTRAPOLATED` so `min()` *is* the join; arithmetic is defined only between
+  matching `(unit, frame)` values and the result inherits the weakest input's
+  stamp. Construction is **sealed**: a `Quantity` can't be built without the
+  module-private mint token, provenance is *conferred* by acquisition factories
+  (`measured`/`inferred`/`extrapolated`) rather than passed as an argument, and
+  `measured()` is confined to the source / spec-policy layer — so relabeling
+  inferred→measured is genuinely **unconstructable** (not just discouraged). The
+  unit is a phantom *type* parameter and angles are phantom-typed
+  `Angle[Crank|Cam]`, so `mm + inch` and cam-as-crank are `mypy` errors. There is
+  no `.magnitude`; the one bare-scalar exit is `float(x)`. `ProvFloat` is now a
+  back-compat alias for `Quantity`.
 - **B · Single canonical representation** — `CamProfile` is a `@final` facade over
   one immutable `CanonicalLiftModel` (normalized 720° samples + a *named* operator:
   `SinePowerCamCardApproximation`, `CubicPeriodicSpline`, `MeasuredPeriodicSeries`). Every
@@ -52,9 +58,12 @@ adopt them together. Full rationale: [`docs/design/ROUND1_SYNTHESIS.md`](docs/de
   when sampling density can't support differentiation (Nyquist). A consumer asks
   `is_good_enough_for(AnalysisKind)` without coupling to the source; safety
   consumers must pattern-match the unsupported case.
-- **D · Conformance by adversary corpus** — the frozen suite of traps a profile
-  must refuse *is* the spec of correctness. It converts C1/C3/C4 from reviewer
-  vigilance into CI.
+- **D · Conformance by adversary corpus** — the suite of traps a profile must
+  refuse or be unable to construct *is* the spec of correctness. Many traps are now
+  executable, converting C1 (import guard), C3 (sealed mint, no `provenance=`,
+  MEASURED-confined-to-source), and C6 (cross-unit and cam-as-crank `mypy` traps)
+  from reviewer vigilance into CI; the rest stay declared until their machinery
+  lands.
 
 ## The boundary contract (C5 surface)
 
@@ -79,9 +88,10 @@ fixed (C5).
 - **`Valvetrain`, `EngineGeometry`, `ValveGeometry`, `SpringPackage`** — the
   physical context an analysis needs *in addition to* a profile (geometry, masses,
   clearances). Source-agnostic value/aggregate types.
-- **`ProvFloat`, `Angle`, `Provenance`, `ProvenanceMap`** — value objects
-  (Pillars A/C). Immutable, equality-by-value, no provenance setters. `Quantity`
-  is a compatibility alias for `ProvFloat` during the D012 transition.
+- **`Quantity[Unit]`, `Angle[Frame]`, `Provenance`, `ProvenanceMap`** — value
+  objects (Pillars A/C). Immutable, equality-by-value, sealed construction, no
+  provenance setters. `ProvFloat` is a back-compat annotation alias for
+  `Quantity`.
 
 See [`docs/reference/ubiquitous-language.md`](docs/reference/ubiquitous-language.md)
 for the canonical definitions and [`docs/explanation/domain-driven-design.md`](docs/explanation/domain-driven-design.md)

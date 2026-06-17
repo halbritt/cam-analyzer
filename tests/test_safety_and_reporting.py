@@ -20,7 +20,21 @@ from cam_analyzer.analysis.spring_safety import (
 from cam_analyzer.profile import AnalysisKind
 from cam_analyzer.profile.canonical import CanonicalCamProfile, CanonicalLiftModel
 from cam_analyzer.profile.provenance_map import ProvenanceMap
-from cam_analyzer.quantity import Angle, Provenance, Quantity, Refusal
+from cam_analyzer.quantity import (
+    Angle,
+    Inch,
+    InchDeg,
+    InchPerDeg,
+    InchPerDeg2,
+    InchPerDeg3,
+    Mm,
+    Provenance,
+    Quantity,
+    Refusal,
+    extrapolated,
+    inferred,
+    measured,
+)
 from cam_analyzer.sources.cam_card import CamCard, profiles_from_cam_card
 
 
@@ -30,16 +44,16 @@ class ReportProfile:
         self._good_for_safety = good_for_safety
 
     def lift_at(self, angle: Angle) -> Quantity:
-        return Quantity(0.050, "inch", "valve_side", Provenance.INFERRED)
+        return inferred(0.050, Inch, "valve_side")
 
     def velocity_at(self, angle: Angle) -> Quantity:
-        return Quantity(0.0, "inch_per_deg", "valve_side", Provenance.EXTRAPOLATED)
+        return extrapolated(0.0, InchPerDeg, "valve_side")
 
     def acceleration_at(self, angle: Angle) -> Quantity:
-        return Quantity(0.0, "inch_per_deg2", "valve_side", Provenance.EXTRAPOLATED)
+        return extrapolated(0.0, InchPerDeg2, "valve_side")
 
     def jerk_at(self, angle: Angle) -> Quantity:
-        return Quantity(0.0, "inch_per_deg3", "valve_side", Provenance.EXTRAPOLATED)
+        return extrapolated(0.0, InchPerDeg3, "valve_side")
 
     def events_at_lift(self, lift: Quantity) -> list[Angle]:
         if float(lift) >= 0.360:
@@ -52,10 +66,10 @@ class ReportProfile:
         return Angle.crank(238.0 if self._centerline_deg < 360.0 else 246.0)
 
     def max_lift(self) -> Quantity:
-        return Quantity(0.360, "inch", "valve_side", Provenance.INFERRED)
+        return inferred(0.360, Inch, "valve_side")
 
     def area_under_curve(self) -> Quantity:
-        return Quantity(42.0, "inch_deg", "valve_side", Provenance.INFERRED)
+        return inferred(42.0, InchDeg, "valve_side")
 
     def is_good_enough_for(self, kind: AnalysisKind) -> bool:
         if kind in {AnalysisKind.PTV, AnalysisKind.SPRING_SAFETY}:
@@ -113,7 +127,7 @@ def test_measured_profile_yields_ptv_pass_or_fail_with_measured_clearance() -> N
         PistonToValveInput(
             valve="intake",
             threshold_policy=default_intake_policy(),
-            measured_clearance=Quantity(0.060, "inch", "valve_side", Provenance.MEASURED),
+            measured_clearance=measured(0.060, Inch, "valve_side"),
         ),
     )
     unsafe = evaluate_piston_to_valve(
@@ -121,7 +135,7 @@ def test_measured_profile_yields_ptv_pass_or_fail_with_measured_clearance() -> N
         PistonToValveInput(
             valve="intake",
             threshold_policy=default_intake_policy(),
-            measured_clearance=Quantity(0.040, "inch", "valve_side", Provenance.MEASURED),
+            measured_clearance=measured(0.040, Inch, "valve_side"),
         ),
     )
 
@@ -137,16 +151,16 @@ def test_measured_profile_yields_spring_pass_or_fail_with_measured_clearance() -
         profile,
         SpringSafetyInput(
             threshold_policy=default_spring_policy(),
-            retainer_to_guide_clearance=Quantity(0.040, "inch", "valve_side", Provenance.MEASURED),
-            coil_clearance=Quantity(0.020, "inch", "valve_side", Provenance.MEASURED),
+            retainer_to_guide_clearance=measured(0.040, Inch, "valve_side"),
+            coil_clearance=measured(0.020, Inch, "valve_side"),
         ),
     )
     unsafe = evaluate_spring_safety(
         profile,
         SpringSafetyInput(
             threshold_policy=default_spring_policy(),
-            retainer_to_guide_clearance=Quantity(0.010, "inch", "valve_side", Provenance.MEASURED),
-            coil_clearance=Quantity(0.005, "inch", "valve_side", Provenance.MEASURED),
+            retainer_to_guide_clearance=measured(0.010, Inch, "valve_side"),
+            coil_clearance=measured(0.005, Inch, "valve_side"),
         ),
     )
 
@@ -168,15 +182,15 @@ def test_cam_card_profile_stays_undecidable_even_with_measured_clearance() -> No
         PistonToValveInput(
             valve="intake",
             threshold_policy=default_intake_policy(),
-            measured_clearance=Quantity(0.090, "inch", "valve_side", Provenance.MEASURED),
+            measured_clearance=measured(0.090, Inch, "valve_side"),
         ),
     )
     spring = evaluate_spring_safety(
         intake,
         SpringSafetyInput(
             threshold_policy=default_spring_policy(),
-            retainer_to_guide_clearance=Quantity(0.040, "inch", "valve_side", Provenance.MEASURED),
-            coil_clearance=Quantity(0.020, "inch", "valve_side", Provenance.MEASURED),
+            retainer_to_guide_clearance=measured(0.040, Inch, "valve_side"),
+            coil_clearance=measured(0.020, Inch, "valve_side"),
         ),
     )
 
@@ -203,7 +217,7 @@ def test_piston_to_valve_compares_measured_clearance_when_available() -> None:
         PistonToValveInput(
             valve="exhaust",
             threshold_policy=default_exhaust_policy(),
-            measured_clearance=Quantity(0.090, "inch", "valve_side", Provenance.MEASURED),
+            measured_clearance=measured(0.090, Inch, "valve_side"),
         ),
     )
 
@@ -215,12 +229,15 @@ def test_piston_to_valve_compares_measured_clearance_when_available() -> None:
 
 def test_piston_to_valve_refuses_incompatible_clearance_units() -> None:
     profile = ReportProfile(centerline_deg=109.5, good_for_safety=True)
+    # A millimetre clearance against an inch threshold: a cross-unit mistake that
+    # is now ALSO a mypy error at the call site (Quantity[Mm] vs Quantity[Inch]);
+    # the runtime refusal is defence-in-depth for unchecked callers.
     result = evaluate_piston_to_valve(
         profile,
         PistonToValveInput(
             valve="intake",
             threshold_policy=default_intake_policy(),
-            measured_clearance=Quantity(2.0, "mm", "valve_side", Provenance.MEASURED),
+            measured_clearance=measured(2.0, Mm, "valve_side"),
         ),
     )
 
@@ -244,8 +261,8 @@ def test_spring_safety_compares_measured_margins_when_available() -> None:
         ReportProfile(centerline_deg=109.5, good_for_safety=True),
         SpringSafetyInput(
             threshold_policy=default_spring_policy(),
-            retainer_to_guide_clearance=Quantity(0.040, "inch", "valve_side", Provenance.MEASURED),
-            coil_clearance=Quantity(0.020, "inch", "valve_side", Provenance.MEASURED),
+            retainer_to_guide_clearance=measured(0.040, Inch, "valve_side"),
+            coil_clearance=measured(0.020, Inch, "valve_side"),
         ),
     )
 
@@ -263,8 +280,8 @@ def test_spring_safety_refuses_incompatible_clearance_units() -> None:
         ReportProfile(centerline_deg=109.5, good_for_safety=True),
         SpringSafetyInput(
             threshold_policy=default_spring_policy(),
-            retainer_to_guide_clearance=Quantity(1.0, "mm", "valve_side", Provenance.MEASURED),
-            coil_clearance=Quantity(0.020, "inch", "valve_side", Provenance.MEASURED),
+            retainer_to_guide_clearance=measured(1.0, Mm, "valve_side"),
+            coil_clearance=measured(0.020, Inch, "valve_side"),
         ),
     )
 
@@ -276,11 +293,11 @@ def test_spring_safety_refuses_incompatible_clearance_units() -> None:
 def test_report_lists_stamped_values_refusals_and_undecidable_verdicts() -> None:
     intake = ReportProfile(centerline_deg=109.5)
     exhaust = ReportProfile(centerline_deg=615.5)
-    lift = Quantity(0.050, "inch", "valve_side", Provenance.INFERRED)
+    lift = inferred(0.050, Inch, "valve_side")
     dcr_input = DynamicCompressionInput(
         static_compression_ratio=12.8,
         geometry=EngineGeometry.from_mm(bore=77.0, stroke=53.6, rod_length=96.9),
-        closing_lift=Quantity(0.050, "inch", "valve_side", Provenance.INFERRED),
+        closing_lift=inferred(0.050, Inch, "valve_side"),
     )
 
     report = render_markdown_report(

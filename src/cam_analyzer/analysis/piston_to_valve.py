@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from cam_analyzer.analysis.safety import PTV_EXHAUST_POLICY, PTV_INTAKE_POLICY, ThresholdPolicy
 from cam_analyzer.profile import AnalysisKind, CamProfile
-from cam_analyzer.quantity import ProvFloat, Refusal, SafetyVerdict
+from cam_analyzer.quantity import Inch, Quantity, Refusal, SafetyVerdict
 
 PistonToValveVerdict = SafetyVerdict
 
@@ -15,14 +15,14 @@ PistonToValveVerdict = SafetyVerdict
 class PistonToValveInput:
     valve: str
     threshold_policy: ThresholdPolicy
-    measured_clearance: ProvFloat | None = None
+    measured_clearance: Quantity[Inch] | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class PistonToValveResult:
     verdict: PistonToValveVerdict
     threshold_policy: ThresholdPolicy
-    margin: ProvFloat | None
+    margin: Quantity[Inch] | None
     explanation: str
 
 
@@ -70,7 +70,7 @@ def evaluate_piston_to_valve(
     )
 
 
-def _require_policy_compatible(clearance: ProvFloat, policy: ThresholdPolicy) -> None:
+def _require_policy_compatible(clearance: Quantity[Inch], policy: ThresholdPolicy) -> None:
     if clearance.unit != policy.minimum.unit or clearance.frame != policy.minimum.frame:
         raise ValueError("clearance and PTV policy must use the same unit/frame")
 

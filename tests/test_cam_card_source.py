@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from cam_analyzer.profile import CamProfile
-from cam_analyzer.quantity import Angle, Provenance, Quantity, Refusal
+from cam_analyzer.quantity import Angle, Inch, Provenance, Refusal, inferred
 from cam_analyzer.sources.cam_card import (
     CHECKING_LIFT_IN,
     CamCard,
@@ -60,7 +60,7 @@ def test_sine_power_operator_fits_peak_lift_duration_050_and_lobe_center() -> No
 
 def test_generated_profiles_report_reference_events_and_durations_at_050() -> None:
     profiles = profiles_from_cam_card(CamCard.wr250r_reference())
-    checking_lift = Quantity(0.050, "inch", "valve_side", Provenance.INFERRED)
+    checking_lift = inferred(0.050, Inch, "valve_side")
 
     assert [event.degrees for event in profiles.intake.events_at_lift(checking_lift)] == pytest.approx(
         [228.5, 710.5],

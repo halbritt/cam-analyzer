@@ -1,6 +1,6 @@
 # RFC 0001 — The Honest Typed Boundary
 
-- **Status:** Draft / Proposed
+- **Status:** Accepted — pillars A + B implemented (sealed `Quantity[Unit]` + phantom units/frames, §9 resolved to a non-float value object); pillar D's ergonomic-inversion machinery (`unsafe_strip` + `CAM001` lint) is a tracked follow-up
 - **Date:** 2026-06-17
 - **Addresses:** [#5](https://github.com/halbritt/cam-analyzer/issues/5) (typed boundary enforces C3/C6 by convention, not mechanism), [#6](https://github.com/halbritt/cam-analyzer/issues/6) (Protocol pitfalls), [#8](https://github.com/halbritt/cam-analyzer/issues/8) (cleanup)
 - **Resolves:** the round-2 *"ergonomics-as-integrity"* open problem from `docs/design/round2/IDEATION_SYNTHESIS.md` (flagged independently by all three frontier models)

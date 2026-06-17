@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from cam_analyzer.analysis.safety import RETAINER_TO_GUIDE_POLICY, SPRING_COIL_POLICY
 from cam_analyzer.profile import AnalysisKind, CamProfile
-from cam_analyzer.quantity import ProvFloat, Refusal, SafetyVerdict
+from cam_analyzer.quantity import Inch, Quantity, Refusal, SafetyVerdict
 
 SpringSafetyVerdict = SafetyVerdict
 
@@ -14,24 +14,24 @@ SpringSafetyVerdict = SafetyVerdict
 @dataclass(frozen=True, slots=True)
 class SpringThresholdPolicy:
     name: str
-    retainer_to_guide_minimum: ProvFloat
-    coil_minimum: ProvFloat
+    retainer_to_guide_minimum: Quantity[Inch]
+    coil_minimum: Quantity[Inch]
     owner: str
 
 
 @dataclass(frozen=True, slots=True)
 class SpringSafetyInput:
     threshold_policy: SpringThresholdPolicy
-    retainer_to_guide_clearance: ProvFloat | None = None
-    coil_clearance: ProvFloat | None = None
+    retainer_to_guide_clearance: Quantity[Inch] | None = None
+    coil_clearance: Quantity[Inch] | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class SpringSafetyResult:
     verdict: SpringSafetyVerdict
     threshold_policy: SpringThresholdPolicy
-    retainer_to_guide_margin: ProvFloat | None
-    coil_margin: ProvFloat | None
+    retainer_to_guide_margin: Quantity[Inch] | None
+    coil_margin: Quantity[Inch] | None
     explanation: str
 
 
@@ -90,7 +90,7 @@ def evaluate_spring_safety(profile: CamProfile, inputs: SpringSafetyInput) -> Sp
     )
 
 
-def _require_compatible(clearance: ProvFloat, threshold: ProvFloat) -> None:
+def _require_compatible(clearance: Quantity[Inch], threshold: Quantity[Inch]) -> None:
     if clearance.unit != threshold.unit or clearance.frame != threshold.frame:
         raise ValueError("spring clearance and threshold must use the same unit/frame")
 

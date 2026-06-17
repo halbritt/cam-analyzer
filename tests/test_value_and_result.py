@@ -1,4 +1,4 @@
-"""Focused tests for D012 stamped values and result primitives."""
+"""Focused tests for RFC 0001 sealed stamped values and result primitives."""
 
 from __future__ import annotations
 
@@ -6,11 +6,19 @@ from collections.abc import Callable
 
 import pytest
 
-from cam_analyzer.quantity import ProvFloat, Provenance, Quantity
+from cam_analyzer.quantity import (
+    Inch,
+    Mm,
+    Provenance,
+    Quantity,
+    extrapolated,
+    inferred,
+    measured,
+)
 from cam_analyzer.result import Refusal, SafetyVerdict, VerdictResult
 
 
-def _assert_inferred_lift(stamped_lift: ProvFloat) -> None:
+def _assert_inferred_lift(stamped_lift: Quantity[Inch]) -> None:
     assert stamped_lift.unit == "inch"
     assert stamped_lift.frame == "valve_side"
     assert stamped_lift.provenance == Provenance.INFERRED
@@ -19,21 +27,18 @@ def _assert_inferred_lift(stamped_lift: ProvFloat) -> None:
 @pytest.mark.parametrize(
     ("expression", "expected_magnitude"),
     [
-        (lambda stamped_lift: stamped_lift + 2.0, 3.5),
-        (lambda stamped_lift: 2.0 + stamped_lift, 3.5),
-        (lambda stamped_lift: stamped_lift - 0.5, 1.0),
-        (lambda stamped_lift: 2.0 - stamped_lift, 0.5),
         (lambda stamped_lift: stamped_lift * 2.0, 3.0),
         (lambda stamped_lift: 2.0 * stamped_lift, 3.0),
         (lambda stamped_lift: stamped_lift / 2.0, 0.75),
-        (lambda stamped_lift: 3.0 / stamped_lift, 2.0),
     ],
 )
-def test_plain_number_arithmetic_preserves_stamped_operand_metadata(
-    expression: Callable[[ProvFloat], ProvFloat],
+def test_scaling_by_a_ratio_preserves_stamped_metadata(
+    expression: Callable[[Quantity[Inch]], Quantity[Inch]],
     expected_magnitude: float,
 ) -> None:
-    stamped_lift = ProvFloat.inch(1.5, Provenance.INFERRED)
+    # Scaling a dimensioned value by a dimensionless ratio is meaningful and keeps
+    # the unit/frame/provenance stamp.
+    stamped_lift = inferred(1.5, Inch, "valve_side")
 
     arithmetic_result = expression(stamped_lift)
 
@@ -41,9 +46,31 @@ def test_plain_number_arithmetic_preserves_stamped_operand_metadata(
     _assert_inferred_lift(arithmetic_result)
 
 
+@pytest.mark.parametrize(
+    "expression",
+    [
+        lambda stamped_lift: stamped_lift + 2.0,
+        lambda stamped_lift: 2.0 + stamped_lift,
+        lambda stamped_lift: stamped_lift - 0.5,
+        lambda stamped_lift: 3.0 / stamped_lift,
+    ],
+)
+def test_adding_a_bare_number_to_a_dimensioned_value_is_rejected(
+    expression: Callable[[Quantity[Inch]], object],
+) -> None:
+    # Adding/subtracting a bare scalar to a dimensioned quantity (or inverting it)
+    # is dimensional nonsense — it was only ever possible because the old value was
+    # a float subclass. The sealed value object refuses it at runtime (and it is a
+    # mypy error too). The one explicit exit to a raw float stays ``float(x)``.
+    stamped_lift = inferred(1.5, Inch, "valve_side")
+
+    with pytest.raises(TypeError):
+        expression(stamped_lift)
+
+
 def test_compatible_stamped_arithmetic_joins_weakest_provenance() -> None:
-    measured_lift = ProvFloat.inch(0.360, Provenance.MEASURED)
-    extrapolated_lift = ProvFloat.inch(0.010, Provenance.EXTRAPOLATED)
+    measured_lift = measured(0.360, Inch, "valve_side")
+    extrapolated_lift = extrapolated(0.010, Inch, "valve_side")
 
     combined_lift = measured_lift + extrapolated_lift
 
@@ -56,21 +83,21 @@ def test_compatible_stamped_arithmetic_joins_weakest_provenance() -> None:
 @pytest.mark.parametrize(
     "other_lift",
     [
-        ProvFloat(1.0, "mm", "valve_side", Provenance.INFERRED),
-        ProvFloat(1.0, "inch", "cam_side", Provenance.INFERRED),
+        inferred(1.0, Mm, "valve_side"),
+        inferred(1.0, Inch, "cam_side"),
     ],
 )
 def test_mismatched_stamped_arithmetic_requires_explicit_conversion(
-    other_lift: ProvFloat,
+    other_lift: Quantity[Inch],
 ) -> None:
-    measured_lift = ProvFloat.inch(0.360, Provenance.MEASURED)
+    measured_lift = measured(0.360, Inch, "valve_side")
 
     with pytest.raises(ValueError, match="incompatible stamped values"):
         _ = measured_lift + other_lift
 
 
 def test_display_forms_include_unit_frame_and_provenance_stamp() -> None:
-    stamped_lift = ProvFloat.inch(0.360, Provenance.INFERRED)
+    stamped_lift = inferred(0.360, Inch, "valve_side")
 
     assert "INFERRED" in str(stamped_lift)
     assert "inch" in str(stamped_lift)
@@ -80,22 +107,23 @@ def test_display_forms_include_unit_frame_and_provenance_stamp() -> None:
 
 
 def test_stamped_values_are_immutable_and_stamp_aware() -> None:
-    inferred_lift = ProvFloat.inch(0.360, Provenance.INFERRED)
-    measured_lift = ProvFloat.inch(0.360, Provenance.MEASURED)
+    inferred_lift = inferred(0.360, Inch, "valve_side")
+    measured_lift = measured(0.360, Inch, "valve_side")
 
     assert inferred_lift != measured_lift
     assert inferred_lift != 0.360
     assert 0.360 != inferred_lift
     assert hash(inferred_lift) != hash(measured_lift)
-    with pytest.raises(AttributeError, match="immutable"):
-        inferred_lift.provenance = Provenance.MEASURED
+    with pytest.raises(AttributeError, match="cannot assign"):
+        inferred_lift.provenance = Provenance.MEASURED  # type: ignore[misc]
 
 
-def test_quantity_alias_constructs_provfloat_without_magnitude_escape() -> None:
-    stamped_lift = Quantity(0.050, "inch", "valve_side", Provenance.INFERRED)
+def test_factory_built_value_has_no_magnitude_escape() -> None:
+    stamped_lift = inferred(0.050, Inch, "valve_side")
 
-    assert isinstance(stamped_lift, ProvFloat)
+    assert isinstance(stamped_lift, Quantity)
     assert float(stamped_lift) == pytest.approx(0.050)
+    # The honest exit is float(x); there is deliberately no .magnitude to strip.
     assert not hasattr(stamped_lift, "magnitude")
 
 

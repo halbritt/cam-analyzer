@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, final
+from typing import TYPE_CHECKING, Protocol, final, runtime_checkable
 
 from cam_analyzer.profile import AnalysisKind, CamProfile
 from cam_analyzer.profile.provenance_map import ProvenanceMap
-from cam_analyzer.quantity import Angle, Answer, ProvFloat, Provenance, Refusal
+from cam_analyzer.quantity import Angle, Answer, Crank, ProvFloat, Provenance, Quantity, Refusal
 
 _CYCLE_DEG = 720.0
 _SCAN_STEP_DEG = 0.5
@@ -26,8 +26,13 @@ _SCAN_POINTS = tuple(
 )
 
 
+@runtime_checkable
 class LiftOperator(Protocol):
-    """A named lift model. The facade delegates every C5 query here."""
+    """A named lift model. The facade delegates every C5 query here.
+
+    Structural Protocol, ``runtime_checkable`` to match :class:`CamProfile` (#6) —
+    concrete operators conform by shape, never by subclassing.
+    """
 
     name: str
 
@@ -52,8 +57,12 @@ class CanonicalLiftModel:
 
 
 @final
-class CanonicalCamProfile(CamProfile):
-    """Generic C5 facade implemented once for every source."""
+class CanonicalCamProfile:
+    """Generic C5 facade implemented once for every source.
+
+    Satisfies :class:`CamProfile` *structurally*, not by subclassing — see #6 and
+    the static conformance assertion at the foot of this module.
+    """
 
     def __init__(self, model: CanonicalLiftModel):
         self._model = model
@@ -66,28 +75,28 @@ class CanonicalCamProfile(CamProfile):
     def source(self) -> str:
         return self._model.source
 
-    def lift_at(self, angle: Angle) -> ProvFloat:
+    def lift_at(self, angle: Angle[Crank]) -> ProvFloat:
         crank_deg = angle.require_crank()
         provenance = self._model.provenance.at(crank_deg)
         if provenance is Provenance.MEASURED and not self._measured_sample_supports(crank_deg):
             raise ValueError("measured sparse samples cannot answer unsampled crank angles")
-        return ProvFloat(
+        return Quantity._mint(
             self._model.operator.evaluate(crank_deg),
             self._model.lift_unit,
             self._model.lift_frame,
             provenance,
         )
 
-    def velocity_at(self, angle: Angle) -> Answer:
+    def velocity_at(self, angle: Angle[Crank]) -> Answer:
         return self._derivative_at(1, angle, "inch_per_deg")
 
-    def acceleration_at(self, angle: Angle) -> Answer:
+    def acceleration_at(self, angle: Angle[Crank]) -> Answer:
         return self._derivative_at(2, angle, "inch_per_deg2")
 
-    def jerk_at(self, angle: Angle) -> Answer:
+    def jerk_at(self, angle: Angle[Crank]) -> Answer:
         return self._derivative_at(3, angle, "inch_per_deg3")
 
-    def events_at_lift(self, lift: ProvFloat) -> list[Angle]:
+    def events_at_lift(self, lift: ProvFloat) -> list[Angle[Crank]]:
         self._require_lift_compatible(lift)
         target_lift = float(lift)
         if target_lift < 0.0:
@@ -95,7 +104,7 @@ class CanonicalCamProfile(CamProfile):
         root_degrees = _roots_for_lift(self._model.operator, target_lift)
         return [Angle.crank(crank_deg) for crank_deg in root_degrees]
 
-    def duration_at_lift(self, lift: ProvFloat) -> Angle:
+    def duration_at_lift(self, lift: ProvFloat) -> Angle[Crank]:
         self._require_lift_compatible(lift)
         event_degrees = [event.degrees for event in self.events_at_lift(lift)]
         duration_deg = _duration_above_lift(
@@ -103,14 +112,16 @@ class CanonicalCamProfile(CamProfile):
             float(lift),
             event_degrees,
         )
-        return Angle(duration_deg, "crank")
+        # A duration (not a crank position) — construct without the periodic wrap
+        # that Angle.crank() applies, so a full-cycle 720 stays 720.
+        return Angle[Crank](duration_deg, "crank")
 
     def max_lift(self) -> ProvFloat:
         max_lift_deg = max(_SCAN_POINTS[:-1], key=self._model.operator.evaluate)
         return self.lift_at(Angle.crank(max_lift_deg))
 
     def area_under_curve(self) -> ProvFloat:
-        return ProvFloat(
+        return Quantity._mint(
             _integrate_lift(self._model.operator),
             f"{self._model.lift_unit}_deg",
             self._model.lift_frame,
@@ -128,17 +139,17 @@ class CanonicalCamProfile(CamProfile):
             return self._supports_derivative_everywhere(_JERK_REQUIRED_DERIVATIVE_ORDER)
         return False
 
-    def peak_angle(self) -> Angle:
+    def peak_angle(self) -> Angle[Crank]:
         """Source-blind helper for analyses that need the max-lift centerline."""
         max_lift_deg = max(_SCAN_POINTS[:-1], key=self._model.operator.evaluate)
         return Angle.crank(max_lift_deg)
 
-    def _derivative_at(self, order: int, angle: Angle, unit: str) -> Answer:
+    def _derivative_at(self, order: int, angle: Angle[Crank], unit: str) -> Answer:
         crank_deg = angle.require_crank()
         derivative_map = self._model.provenance.derivative_map(order)
         max_supported_order = self._model.operator.max_supported_derivative(crank_deg)
         if max_supported_order >= order:
-            return ProvFloat(
+            return Quantity._mint(
                 self._model.operator.derivative(order, crank_deg),
                 unit,
                 self._model.lift_frame,
@@ -178,7 +189,7 @@ class CanonicalCamProfile(CamProfile):
             return None
         if max_approximate(crank_deg) < order:
             return None
-        return ProvFloat(
+        return Quantity._mint(
             approximate_derivative(order, crank_deg),
             unit,
             self._model.lift_frame,
@@ -354,3 +365,12 @@ def _dedupe_periodic(roots: list[float]) -> list[float]:
 def _periodic_distance(left_deg: float, right_deg: float) -> float:
     distance = abs((left_deg - right_deg) % _CYCLE_DEG)
     return min(distance, _CYCLE_DEG - distance)
+
+
+if TYPE_CHECKING:
+    # Static structural-conformance check (#6): mypy errors here if the facade
+    # ever stops satisfying the CamProfile Protocol. This replaces the misleading
+    # nominal `class CanonicalCamProfile(CamProfile)`, where an omitted method
+    # would have inherited a `...` body and failed only at call time.
+    def _assert_canonical_is_a_camprofile(profile: CanonicalCamProfile) -> CamProfile:
+        return profile
