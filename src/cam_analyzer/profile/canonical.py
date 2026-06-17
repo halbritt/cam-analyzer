@@ -56,6 +56,21 @@ class CanonicalLiftModel:
     approximate_derivatives: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class DerivativeBand:
+    """An opt-in approximate derivative with an uncertainty band.
+
+    ``value`` is the EXTRAPOLATED ballpark (identical to ``velocity_at`` etc.);
+    ``low``/``high`` bracket it across the cam card's numeric tolerance. All three
+    are EXTRAPOLATED — the band quantifies card-tolerance sensitivity, not the
+    flank-shape model error, so it never licenses a value for the cliff gates.
+    """
+
+    value: ProvFloat
+    low: ProvFloat
+    high: ProvFloat
+
+
 @final
 class CanonicalCamProfile:
     """Generic C5 facade implemented once for every source.
@@ -95,6 +110,15 @@ class CanonicalCamProfile:
 
     def jerk_at(self, angle: Angle[Crank]) -> Answer:
         return self._derivative_at(3, angle, "inch_per_deg3")
+
+    def velocity_band_at(self, angle: Angle[Crank]) -> DerivativeBand | Refusal:
+        return self._derivative_band_at(1, angle, "inch_per_deg")
+
+    def acceleration_band_at(self, angle: Angle[Crank]) -> DerivativeBand | Refusal:
+        return self._derivative_band_at(2, angle, "inch_per_deg2")
+
+    def jerk_band_at(self, angle: Angle[Crank]) -> DerivativeBand | Refusal:
+        return self._derivative_band_at(3, angle, "inch_per_deg3")
 
     def events_at_lift(self, lift: ProvFloat) -> list[Angle[Crank]]:
         self._require_lift_compatible(lift)
@@ -194,6 +218,46 @@ class CanonicalCamProfile:
             unit,
             self._model.lift_frame,
             Provenance.EXTRAPOLATED,
+        )
+
+    def _derivative_band_at(
+        self, order: int, angle: Angle[Crank], unit: str
+    ) -> DerivativeBand | Refusal:
+        """Opt-in uncertainty band around an approximate derivative (all EXTRAPOLATED).
+
+        Refuses wherever the approximate value itself would (strict mode, or outside
+        the approximable lobe). The band brackets the central value across the cam
+        card's numeric tolerance; it never elevates the value's fitness — the cliff
+        gates ignore it entirely.
+        """
+        crank_deg = angle.require_crank()
+        central = self._approximate_derivative_at(order, crank_deg, unit)
+        if central is None:
+            derivative_map = self._model.provenance.derivative_map(order)
+            max_supported = self._model.operator.max_supported_derivative(crank_deg)
+            return Refusal(
+                requested=f"derivative band order {order} at {crank_deg:.3f} deg",
+                reason=(
+                    "an uncertainty band needs the opt-in approximate derivative; "
+                    f"{self._model.operator.name} supports order {max_supported} here "
+                    f"and approximate_derivatives is "
+                    f"{'on' if self._model.approximate_derivatives else 'off'}"
+                ),
+                remedy=(
+                    "enable approximate_derivatives and query within the approximable "
+                    "lobe, or provide backing lift data with support for this order"
+                ),
+                provenance=derivative_map.at(crank_deg),
+            )
+        band = getattr(self._model.operator, "approximate_derivative_band", None)
+        if band is None:
+            return DerivativeBand(value=central, low=central, high=central)
+        low, high = band(order, crank_deg)
+        frame = self._model.lift_frame
+        return DerivativeBand(
+            value=central,
+            low=Quantity._mint(low, unit, frame, Provenance.EXTRAPOLATED),
+            high=Quantity._mint(high, unit, frame, Provenance.EXTRAPOLATED),
         )
 
     def _measured_sample_supports(self, crank_deg: float) -> bool:
