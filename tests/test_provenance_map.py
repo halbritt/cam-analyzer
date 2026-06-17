@@ -32,6 +32,24 @@ def test_at_resolves_across_boundaries():
     assert pm.at(719) == Provenance.MEASURED
 
 
+def test_at_resolves_across_boundaries_after_starts_derived_from_intervals():
+    # Regression for issue #8: _starts is derived from _intervals (single source
+    # of truth). Asserting at() still resolves correctly across every interval
+    # boundary guards the bisect lookup against drift between the two lists.
+    pm = ProvenanceMap(EXAMPLE)
+
+    # _starts must be exactly the interval start_deg values, in order.
+    assert pm._starts == [iv.start_deg for iv in pm._intervals]
+
+    # Each boundary resolves to its own interval, and the point just below a
+    # boundary resolves to the previous interval.
+    assert pm.at(0.0) == Provenance.MEASURED
+    assert pm.at(15.0) == Provenance.EXTRAPOLATED
+    assert pm.at(14.999) == Provenance.MEASURED
+    assert pm.at(345.0) == Provenance.MEASURED
+    assert pm.at(344.999) == Provenance.EXTRAPOLATED
+
+
 def test_at_is_periodic_with_720_wrap():
     pm = ProvenanceMap(EXAMPLE)
 
