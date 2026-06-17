@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 640" role="img" aria-labelledby="chart-title chart-desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 680" role="img" aria-labelledby="chart-title chart-desc">
 <title id="chart-title">WR250R reference (Web Cam 81-651)</title>
 <desc id="chart-desc">Valve-lift overlay rendered from a source-blind cam-analyzer visualization projection.</desc>
-<rect x="0" y="0" width="1040" height="640" fill="#ffffff"/>
+<rect x="0" y="0" width="1040" height="680" fill="#ffffff"/>
 <text x="78" y="42" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#111827">WR250R reference (Web Cam 81-651)</text>
 <text x="78" y="66" font-family="Arial, sans-serif" font-size="13" fill="#4b5563">Valve lift overlay, sampled over 720 crank degrees</text>
 <rect x="78" y="82" width="888" height="372" fill="#f9fafb" stroke="#d1d5db"/>
@@ -58,5 +58,5 @@
 <text x="446" y="602" font-family="Arial, sans-serif" font-size="12" fill="#111827">EXTRAPOLATED</text>
 <rect x="398" y="609" width="36" height="10" fill="none" stroke="#111827"/>
 <text x="446" y="620" font-family="Arial, sans-serif" font-size="12" fill="#111827">UNDECIDABLE</text>
-<text x="78" y="620" font-family="Arial, sans-serif" font-size="11" fill="#4b5563">Projection: cam_analyzer.visualization_projection.v1. Renderer draws only sampled boundary answers and does not recompute source facts.</text>
+<text x="78" y="654" font-family="Arial, sans-serif" font-size="11" fill="#4b5563">Projection: cam_analyzer.visualization_projection.v1. Renderer draws only sampled boundary answers and does not recompute source facts.</text>
 </svg>

@@ -9,12 +9,18 @@ from html import escape
 from typing import cast
 
 _SVG_WIDTH = 1040.0
-_SVG_HEIGHT = 640.0
+_SVG_HEIGHT = 680.0
 _PLOT_LEFT = 78.0
 _PLOT_TOP = 82.0
 _PLOT_WIDTH = 888.0
 _PLOT_HEIGHT = 372.0
 _CYCLE_DEGREES = 720.0
+_LEGEND_TITLE_Y = 540.0
+_PROFILE_LEGEND_START_Y = 562.0
+_PROFILE_LEGEND_ROW_GAP = 20.0
+_PROVENANCE_LEGEND_START_Y = 562.0
+_PROVENANCE_LEGEND_ROW_GAP = 18.0
+_FOOTER_BASELINE_Y = 654.0
 _PROFILE_COLORS = ("#2563eb", "#dc2626", "#059669", "#7c3aed")
 _STROKE_DASHARRAY = {
     "solid": "",
@@ -135,7 +141,7 @@ def _svg_header(title: str) -> list[str]:
         f"<title id=\"chart-title\">{safe_title}</title>",
         "<desc id=\"chart-desc\">Valve-lift overlay rendered from a source-blind "
         "cam-analyzer visualization projection.</desc>",
-        '<rect x="0" y="0" width="1040" height="640" fill="#ffffff"/>',
+        f'<rect x="0" y="0" width="{_SVG_WIDTH:.0f}" height="{_SVG_HEIGHT:.0f}" fill="#ffffff"/>',
         f'<text x="{_PLOT_LEFT:.0f}" y="42" font-family="Arial, sans-serif" '
         f'font-size="24" font-weight="700" fill="#111827">{safe_title}</text>',
         f'<text x="{_PLOT_LEFT:.0f}" y="66" font-family="Arial, sans-serif" '
@@ -221,14 +227,14 @@ def _legend_svg(
     schema: str,
 ) -> list[str]:
     parts = [
-        f'<text x="{_PLOT_LEFT:.0f}" y="540" font-family="Arial, sans-serif" '
+        f'<text x="{_PLOT_LEFT:.0f}" y="{_LEGEND_TITLE_Y:.0f}" font-family="Arial, sans-serif" '
         'font-size="13" font-weight="700" fill="#111827">Profiles</text>'
     ]
     parts.extend(_profile_legend_svg(profiles))
     parts.extend(_provenance_legend_svg(legend))
     safe_schema = escape(schema)
     parts.append(
-        f'<text x="{_PLOT_LEFT:.0f}" y="620" font-family="Arial, sans-serif" '
+        f'<text x="{_PLOT_LEFT:.0f}" y="{_FOOTER_BASELINE_Y:.0f}" font-family="Arial, sans-serif" '
         f'font-size="11" fill="#4b5563">Projection: {safe_schema}. Renderer draws only sampled '
         "boundary answers and does not recompute source facts.</text>"
     )
@@ -238,7 +244,7 @@ def _legend_svg(
 def _profile_legend_svg(profiles: Sequence[_LiftProfile]) -> list[str]:
     parts = []
     for index, profile in enumerate(profiles):
-        y = 562.0 + index * 20.0
+        y = _PROFILE_LEGEND_START_Y + index * _PROFILE_LEGEND_ROW_GAP
         parts.append(
             f'<line x1="{_PLOT_LEFT:.0f}" y1="{y:.0f}" x2="{_PLOT_LEFT + 28:.0f}" y2="{y:.0f}" '
             f'stroke="{profile.color}" stroke-width="3"/>'
@@ -252,12 +258,12 @@ def _profile_legend_svg(profiles: Sequence[_LiftProfile]) -> list[str]:
 
 def _provenance_legend_svg(legend: Mapping[str, object]) -> list[str]:
     parts = [
-        '<text x="398" y="540" font-family="Arial, sans-serif" font-size="13" '
+        f'<text x="398" y="{_LEGEND_TITLE_Y:.0f}" font-family="Arial, sans-serif" font-size="13" '
         'font-weight="700" fill="#111827">Provenance</text>'
     ]
     for index, provenance in enumerate(("MEASURED", "INFERRED", "EXTRAPOLATED", "UNDECIDABLE")):
         style = _mapping_field(legend, provenance)
-        y = 562.0 + index * 18.0
+        y = _PROVENANCE_LEGEND_START_Y + index * _PROVENANCE_LEGEND_ROW_GAP
         if _bool_field(style, "draw_line"):
             dash_attr = f' stroke-dasharray="{_dasharray(_string_field(style, "stroke"))}"'
             parts.append(
