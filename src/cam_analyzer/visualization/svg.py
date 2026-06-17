@@ -9,18 +9,24 @@ from html import escape
 from typing import cast
 
 _SVG_WIDTH = 1040.0
-_SVG_HEIGHT = 680.0
+_SVG_HEIGHT = 1020.0
 _PLOT_LEFT = 78.0
 _PLOT_TOP = 82.0
 _PLOT_WIDTH = 888.0
 _PLOT_HEIGHT = 372.0
+_DERIVATIVE_PANEL_HEIGHT = 82.0
+_DERIVATIVE_PANEL_TOPS = {
+    "velocity": 520.0,
+    "acceleration": 632.0,
+    "jerk": 744.0,
+}
 _CYCLE_DEGREES = 720.0
-_LEGEND_TITLE_Y = 540.0
-_PROFILE_LEGEND_START_Y = 562.0
+_LEGEND_TITLE_Y = 872.0
+_PROFILE_LEGEND_START_Y = 894.0
 _PROFILE_LEGEND_ROW_GAP = 20.0
-_PROVENANCE_LEGEND_START_Y = 562.0
+_PROVENANCE_LEGEND_START_Y = 894.0
 _PROVENANCE_LEGEND_ROW_GAP = 18.0
-_FOOTER_BASELINE_Y = 654.0
+_FOOTER_BASELINE_Y = 992.0
 _PROFILE_COLORS = ("#2563eb", "#dc2626", "#059669", "#7c3aed")
 _STROKE_DASHARRAY = {
     "solid": "",
@@ -33,7 +39,8 @@ _STROKE_DASHARRAY = {
 @dataclass(frozen=True, slots=True)
 class _Point:
     crank_deg: float
-    lift_in: float
+    y_value: float
+    p95_half_width: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +61,7 @@ def render_valve_lift_svg(
     *,
     title: str = "Valve lift overlay",
 ) -> str:
-    """Render the projection's lift series as a static provenance-styled SVG."""
+    """Render the projection as a static provenance-styled SVAJ SVG."""
 
     profiles = _lift_profiles(projection)
     y_max = _nice_lift_max(_max_lift(profiles))
@@ -63,23 +70,31 @@ def render_valve_lift_svg(
     svg_parts.extend(_grid_svg(y_max))
     for profile in profiles:
         svg_parts.extend(_profile_svg(profile, legend, y_max))
+    svg_parts.extend(_derivative_stack_svg(projection, legend))
     svg_parts.extend(_legend_svg(profiles, legend, str(projection.get("schema", "unknown"))))
     svg_parts.append("</svg>")
     return "\n".join(svg_parts)
 
 
 def _lift_profiles(projection: Mapping[str, object]) -> tuple[_LiftProfile, ...]:
+    return _profiles_for_query(projection, "lift")
+
+
+def _profiles_for_query(
+    projection: Mapping[str, object],
+    query: str,
+) -> tuple[_LiftProfile, ...]:
     profiles = []
     for index, raw_profile in enumerate(_sequence_field(projection, "profiles")):
         profile = _as_mapping(raw_profile, "profile")
         name = _string_field(profile, "name")
         series = _mapping_field(profile, "series")
-        lift = _mapping_field(series, "lift")
+        requested_series = _mapping_field(series, query)
         profiles.append(
             _LiftProfile(
                 name=name,
                 color=_PROFILE_COLORS[index % len(_PROFILE_COLORS)],
-                segments=_lift_segments(lift),
+                segments=_series_segments(requested_series),
             )
         )
     if not profiles:
@@ -87,10 +102,10 @@ def _lift_profiles(projection: Mapping[str, object]) -> tuple[_LiftProfile, ...]
     return tuple(profiles)
 
 
-def _lift_segments(lift_series: Mapping[str, object]) -> tuple[_LiftSegment, ...]:
+def _series_segments(series: Mapping[str, object]) -> tuple[_LiftSegment, ...]:
     segments = []
-    for raw_segment in _sequence_field(lift_series, "segments"):
-        segment = _as_mapping(raw_segment, "lift segment")
+    for raw_segment in _sequence_field(series, "segments"):
+        segment = _as_mapping(raw_segment, "series segment")
         if not _bool_field(segment, "draw_line"):
             continue
         provenance = _string_field(segment, "provenance")
@@ -111,7 +126,8 @@ def _segment_points(segment: Mapping[str, object]) -> tuple[_Point, ...]:
             points.append(
                 _Point(
                     crank_deg=_float_field(point, "crank_deg"),
-                    lift_in=float(raw_lift),
+                    y_value=float(raw_lift),
+                    p95_half_width=_p95_half_width(point),
                 )
             )
     return tuple(points)
@@ -119,7 +135,7 @@ def _segment_points(segment: Mapping[str, object]) -> tuple[_Point, ...]:
 
 def _max_lift(profiles: Sequence[_LiftProfile]) -> float:
     lifts = [
-        point.lift_in
+        point.y_value
         for profile in profiles
         for segment in profile.segments
         for point in segment.points
@@ -139,13 +155,13 @@ def _svg_header(title: str) -> list[str]:
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_SVG_WIDTH:.0f} {_SVG_HEIGHT:.0f}" '
         'role="img" aria-labelledby="chart-title chart-desc">',
         f"<title id=\"chart-title\">{safe_title}</title>",
-        "<desc id=\"chart-desc\">Valve-lift overlay rendered from a source-blind "
-        "cam-analyzer visualization projection.</desc>",
+        "<desc id=\"chart-desc\">SVAJ stack rendered from a source-blind "
+        "cam-analyzer visualization projection with provenance and confidence bands.</desc>",
         f'<rect x="0" y="0" width="{_SVG_WIDTH:.0f}" height="{_SVG_HEIGHT:.0f}" fill="#ffffff"/>',
         f'<text x="{_PLOT_LEFT:.0f}" y="42" font-family="Arial, sans-serif" '
         f'font-size="24" font-weight="700" fill="#111827">{safe_title}</text>',
         f'<text x="{_PLOT_LEFT:.0f}" y="66" font-family="Arial, sans-serif" '
-        'font-size="13" fill="#4b5563">Valve lift overlay, sampled over 720 crank degrees</text>',
+        'font-size="13" fill="#4b5563">SVAJ stack, sampled over 720 crank degrees</text>',
     ]
 
 
@@ -180,7 +196,7 @@ def _y_ticks_svg(y_max: float) -> list[str]:
     parts = []
     for index in range(5):
         lift = y_max * index / 4.0
-        y = _y_px(lift, y_max)
+        y = _y_px(lift, 0.0, y_max, _PLOT_TOP, _PLOT_HEIGHT)
         parts.append(
             f'<line x1="{_PLOT_LEFT:.0f}" y1="{y:.2f}" x2="{_PLOT_LEFT + _PLOT_WIDTH:.0f}" '
             f'y2="{y:.2f}" stroke="#e5e7eb"/>'
@@ -213,12 +229,88 @@ def _profile_svg(
         style = _mapping_field(legend, segment.provenance)
         stroke_dasharray = _dasharray(_string_field(style, "stroke"))
         dash_attr = f' stroke-dasharray="{stroke_dasharray}"' if stroke_dasharray else ""
+        band_path = _band_path_data(segment.points, 0.0, y_max, _PLOT_TOP, _PLOT_HEIGHT)
+        if band_path:
+            parts.append(
+                f'<path d="{band_path}" fill="{profile.color}" fill-opacity="0.10" '
+                'stroke="none" data-confidence="95"/>'
+            )
         parts.append(
-            f'<path d="{_path_data(segment.points, y_max)}" fill="none" '
+            f'<path d="{_path_data(segment.points, 0.0, y_max, _PLOT_TOP, _PLOT_HEIGHT)}" fill="none" '
             f'stroke="{profile.color}" stroke-width="2.5" stroke-opacity="{_float_field(style, "opacity"):.2f}"'
             f'{dash_attr} stroke-linecap="round" stroke-linejoin="round"/>'
         )
     return parts
+
+
+def _derivative_stack_svg(
+    projection: Mapping[str, object],
+    legend: Mapping[str, object],
+) -> list[str]:
+    parts = []
+    for query, top in _DERIVATIVE_PANEL_TOPS.items():
+        profiles = _profiles_for_query(projection, query)
+        y_min, y_max = _symmetric_range(profiles)
+        parts.extend(_derivative_grid_svg(query, top, y_min, y_max))
+        for profile in profiles:
+            parts.extend(
+                _series_svg(
+                    profile,
+                    legend,
+                    y_min=y_min,
+                    y_max=y_max,
+                    top=top,
+                    height=_DERIVATIVE_PANEL_HEIGHT,
+                    stroke_width=1.7,
+                )
+            )
+    return parts
+
+
+def _series_svg(
+    profile: _LiftProfile,
+    legend: Mapping[str, object],
+    *,
+    y_min: float,
+    y_max: float,
+    top: float,
+    height: float,
+    stroke_width: float,
+) -> list[str]:
+    parts = []
+    for segment in profile.segments:
+        style = _mapping_field(legend, segment.provenance)
+        dasharray = _dasharray(_string_field(style, "stroke"))
+        dash_attr = f' stroke-dasharray="{dasharray}"' if dasharray else ""
+        parts.append(
+            f'<path d="{_path_data(segment.points, y_min, y_max, top, height)}" fill="none" '
+            f'stroke="{profile.color}" stroke-width="{stroke_width:.1f}" '
+            f'stroke-opacity="{_float_field(style, "opacity"):.2f}"{dash_attr} '
+            'stroke-linecap="round" stroke-linejoin="round"/>'
+        )
+    return parts
+
+
+def _derivative_grid_svg(
+    query: str,
+    top: float,
+    y_min: float,
+    y_max: float,
+) -> list[str]:
+    label = _series_label(query)
+    zero_y = _y_px(0.0, y_min, y_max, top, _DERIVATIVE_PANEL_HEIGHT)
+    return [
+        f'<rect x="{_PLOT_LEFT:.0f}" y="{top:.0f}" width="{_PLOT_WIDTH:.0f}" '
+        f'height="{_DERIVATIVE_PANEL_HEIGHT:.0f}" fill="#f9fafb" stroke="#d1d5db"/>',
+        f'<line x1="{_PLOT_LEFT:.0f}" y1="{zero_y:.2f}" x2="{_PLOT_LEFT + _PLOT_WIDTH:.0f}" '
+        f'y2="{zero_y:.2f}" stroke="#9ca3af"/>',
+        f'<text x="{_PLOT_LEFT:.0f}" y="{top - 8:.0f}" font-family="Arial, sans-serif" '
+        f'font-size="13" font-weight="700" fill="#111827">{label}</text>',
+        f'<text x="{_PLOT_LEFT - 12:.0f}" y="{top + 12:.0f}" text-anchor="end" '
+        f'font-family="Arial, sans-serif" font-size="10" fill="#374151">{y_max:.5f}</text>',
+        f'<text x="{_PLOT_LEFT - 12:.0f}" y="{top + _DERIVATIVE_PANEL_HEIGHT:.0f}" text-anchor="end" '
+        f'font-family="Arial, sans-serif" font-size="10" fill="#374151">{y_min:.5f}</text>',
+    ]
 
 
 def _legend_svg(
@@ -279,20 +371,89 @@ def _provenance_legend_svg(legend: Mapping[str, object]) -> list[str]:
     return parts
 
 
-def _path_data(points: Sequence[_Point], y_max: float) -> str:
+def _path_data(
+    points: Sequence[_Point],
+    y_min: float,
+    y_max: float,
+    top: float,
+    height: float,
+) -> str:
     commands = [
-        f"{'M' if index == 0 else 'L'} {_x_px(point.crank_deg):.2f} {_y_px(point.lift_in, y_max):.2f}"
+        f"{'M' if index == 0 else 'L'} {_x_px(point.crank_deg):.2f} "
+        f"{_y_px(point.y_value, y_min, y_max, top, height):.2f}"
         for index, point in enumerate(points)
     ]
     return " ".join(commands)
+
+
+def _band_path_data(
+    points: Sequence[_Point],
+    y_min: float,
+    y_max: float,
+    top: float,
+    height: float,
+) -> str:
+    band_points = [
+        (point, point.p95_half_width)
+        for point in points
+        if point.p95_half_width is not None
+    ]
+    if len(band_points) < 2:
+        return ""
+    upper = [
+        f"{'M' if index == 0 else 'L'} {_x_px(point.crank_deg):.2f} "
+        f"{_y_px(point.y_value + p95_half_width, y_min, y_max, top, height):.2f}"
+        for index, (point, p95_half_width) in enumerate(band_points)
+    ]
+    lower = [
+        f"L {_x_px(point.crank_deg):.2f} "
+        f"{_y_px(point.y_value - p95_half_width, y_min, y_max, top, height):.2f}"
+        for point, p95_half_width in reversed(band_points)
+    ]
+    return " ".join((*upper, *lower, "Z"))
 
 
 def _x_px(crank_deg: float) -> float:
     return _PLOT_LEFT + (crank_deg / _CYCLE_DEGREES) * _PLOT_WIDTH
 
 
-def _y_px(lift_in: float, y_max: float) -> float:
-    return _PLOT_TOP + ((y_max - lift_in) / y_max) * _PLOT_HEIGHT
+def _y_px(value: float, y_min: float, y_max: float, top: float, height: float) -> float:
+    ratio = (y_max - value) / (y_max - y_min)
+    return top + min(max(ratio, 0.0), 1.0) * height
+
+
+def _symmetric_range(profiles: Sequence[_LiftProfile]) -> tuple[float, float]:
+    max_abs = max(
+        (
+            abs(point.y_value)
+            for profile in profiles
+            for segment in profile.segments
+            for point in segment.points
+        ),
+        default=0.0,
+    )
+    if max_abs <= 0.0:
+        max_abs = 1e-6
+    return -max_abs, max_abs
+
+
+def _series_label(query: str) -> str:
+    labels = {
+        "velocity": "Velocity (in/deg)",
+        "acceleration": "Acceleration (in/deg^2)",
+        "jerk": "Jerk (in/deg^3)",
+    }
+    return labels[query]
+
+
+def _p95_half_width(point: Mapping[str, object]) -> float | None:
+    confidence = point.get("confidence")
+    if not isinstance(confidence, Mapping):
+        return None
+    p95 = confidence.get("p95_half_width")
+    if isinstance(p95, int | float):
+        return float(p95)
+    return None
 
 
 def _dasharray(stroke: str) -> str:

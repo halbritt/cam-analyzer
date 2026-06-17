@@ -51,12 +51,12 @@ adopt them together. Full rationale: [`docs/design/ROUND1_SYNTHESIS.md`](docs/de
   back-compat alias for `Quantity`.
 - **B · Single canonical representation** — `CamProfile` is a `@final` facade over
   one immutable `CanonicalLiftModel` (normalized 720° samples + a *named* operator:
-  `SinePowerCamCardOperator` today; `CubicPeriodicSpline`, `MeasuredPeriodicSeries`
-  planned). Every query delegates to that one operator. **Sparse-as-continuous is
+  `PolynomialMotionLawCamCardOperator` today; `CubicPeriodicSpline`,
+  `MeasuredPeriodicSeries` planned). Every query delegates to that one operator. **Sparse-as-continuous is
   unconstructable** (trapped, `VERIFIED`). **Derivative consistency, however, is
   operator-TRUSTED, not constructed** (`ASSERTED`): an operator hand-writes
-  `evaluate` and `derivative` as *independent* methods (`sources/cam_card.py:138`,
-  `:149`); nothing differentiates one to check the other, so the stronger claim
+  `evaluate` and `derivative` as *independent* methods (`sources/cam_card.py`);
+  nothing differentiates one to check the other, so the stronger claim
   "inconsistent derivatives are unconstructable" over-states what the code
   guarantees. See [`adr-derivatives-operator-trusted.md`](docs/decisions/adr-derivatives-operator-trusted.md).
 - **C · Per-region fitness + first-class ignorance** — queries return a value
@@ -124,9 +124,11 @@ Build order (each pick sits on the prior):
    bare-scalar exit is `float(x)`. Follow-on `ProvArray` (D017) for NumPy is
    `DESIGNED` (not built).
 2. **Derivative-capability matrix + Nyquist gate** (D014) — `VERIFIED` (partial).
-   `velocity/acceleration/jerk_at` answer only where sample density supports that
-   order, else return a structured `Refusal`. Closes Pillar B's "smooth cam-card
-   approximation emits authoritative jerk" failure mode.
+   Operators may refuse derivative orders their data cannot justify. The M1 cam-card
+   operator supplies velocity/acceleration/jerk from its motion law, but those answers
+   are provenance-capped model derivatives, not measured valvetrain dynamics. Closes
+   Pillar B's "smooth cam-card approximation emits authoritative jerk" failure mode by
+   making the derivative source visible instead of upgrading its trust.
 3. **Bracketed verdict-agreement** (D013) — **`DESIGNED`, not built.** The intent:
    run cliff analyses (PTV, spring float) on the earliest- and latest-plausible
    curves from the card's tolerances and publish only whether the *verdict* agrees;

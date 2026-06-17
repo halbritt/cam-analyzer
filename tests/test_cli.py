@@ -76,7 +76,11 @@ def test_render_chart_projection_from_card_data_contains_stamped_samples() -> No
         "provenance_rendering_grammar",
         "sampled_c5_series",
         "refusal_segments",
-        "static_valve_lift_svg",
+        "static_svaj_svg",
+        "threshold_duration_table",
+        "confidence_bands",
+        "profile_quality_warnings",
+        "svaj_stack_svg",
     ]
     assert "echarts_ssr_adapter" in projection["deferred"]
     assert "chart_suite_svg_export" in projection["deferred"]
@@ -98,7 +102,8 @@ def test_render_chart_projection_from_card_data_contains_stamped_samples() -> No
         "EXTRAPOLATED",
     }
     acceleration_samples = intake["series"]["acceleration"]["samples"]
-    assert all(sample["answer"]["kind"] == "refusal" for sample in acceleration_samples)
+    assert all(sample["answer"]["kind"] == "quantity" for sample in acceleration_samples)
+    assert all(sample["answer"]["provenance"] == "EXTRAPOLATED" for sample in acceleration_samples)
 
 
 def test_render_svg_chart_from_card_data_draws_the_test_cam_lift_overlay() -> None:

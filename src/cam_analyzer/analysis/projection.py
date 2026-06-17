@@ -14,6 +14,11 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from cam_analyzer.analysis.profile_quality import (
+    confidence_band_for_answer,
+    profile_quality_warnings,
+    threshold_duration_table,
+)
 from cam_analyzer.profile import CamProfile
 from cam_analyzer.quantity import Angle, Crank, ProvFloat, Provenance, Quantity, Refusal
 
@@ -151,6 +156,8 @@ def _project_profile(
             query.name: _project_series(profile_input.profile, query, sample_degrees)
             for query in _SERIES_QUERIES
         },
+        "threshold_durations": _project_threshold_durations(profile_input.profile),
+        "quality_warnings": _project_quality_warnings(profile_input.profile),
     }
     if profile_input.role is not None:
         profile_projection["role"] = profile_input.role
@@ -174,12 +181,35 @@ def _project_series(
         )
         for index, degrees in enumerate(sample_degrees)
     )
+    scale = _series_scale(samples)
     return {
         "query": query.name,
         "derivative_order": query.derivative_order,
-        "samples": [_sample_to_json(sample) for sample in samples],
-        "segments": _split_segments(query.name, samples),
+        "samples": [_sample_to_json(sample, scale) for sample in samples],
+        "segments": _split_segments(query.name, samples, scale),
     }
+
+
+def _project_threshold_durations(profile: CamProfile) -> list[dict[str, object]]:
+    return [
+        {
+            "threshold": _serialize_quantity(row.threshold),
+            "events": [_serialize_angle(event) for event in row.events],
+            "duration": _serialize_angle(row.duration),
+        }
+        for row in threshold_duration_table(profile)
+    ]
+
+
+def _project_quality_warnings(profile: CamProfile) -> list[dict[str, object]]:
+    return [
+        {
+            "code": warning.code,
+            "severity": warning.severity,
+            "message": warning.message,
+        }
+        for warning in profile_quality_warnings(profile)
+    ]
 
 
 def _sample_profile_query(
@@ -288,17 +318,55 @@ def _serialized_optional_provenance(
     return {"provenance": provenance.name, "provenance_rank": int(provenance)}
 
 
-def _sample_to_json(sample: _ProjectionSample) -> dict[str, object]:
-    return {
+def _sample_to_json(sample: _ProjectionSample, scale: float) -> dict[str, object]:
+    serialized = {
         "index": sample.index,
         "crank_deg": sample.crank_deg,
         "answer": sample.answer,
     }
+    confidence = _confidence_for_serialized_answer(sample.answer, scale)
+    if confidence is not None:
+        serialized["confidence"] = confidence
+    return serialized
+
+
+def _series_scale(samples: tuple[_ProjectionSample, ...]) -> float:
+    values = []
+    for sample in samples:
+        answer = sample.answer
+        value = answer.get("value")
+        if answer.get("kind") == "quantity" and isinstance(value, int | float):
+            values.append(abs(float(value)))
+    return max(values, default=1e-9)
+
+
+def _confidence_for_serialized_answer(
+    answer: Mapping[str, object],
+    scale: float,
+) -> dict[str, object] | None:
+    if answer.get("kind") != "quantity":
+        return None
+    provenance_name = answer.get("provenance")
+    value = answer.get("value")
+    unit = answer.get("unit")
+    frame = answer.get("frame")
+    if not isinstance(provenance_name, str) or not isinstance(value, int | float):
+        return None
+    if not isinstance(unit, str) or not isinstance(frame, str):
+        return None
+    quantity = Quantity._mint(
+        float(value),
+        unit,
+        frame,
+        Provenance[provenance_name],
+    )
+    return confidence_band_for_answer(quantity, scale)
 
 
 def _split_segments(
     query_name: str,
     samples: tuple[_ProjectionSample, ...],
+    scale: float,
 ) -> list[dict[str, object]]:
     if not samples:
         return []
@@ -311,12 +379,12 @@ def _split_segments(
         if key == active_key:
             continue
         segments.append(
-            _segment_to_json(query_name, samples, start_index, index - 1, active_key)
+            _segment_to_json(query_name, samples, start_index, index - 1, active_key, scale)
         )
         start_index = index
         active_key = key
     segments.append(
-        _segment_to_json(query_name, samples, start_index, len(samples) - 1, active_key)
+        _segment_to_json(query_name, samples, start_index, len(samples) - 1, active_key, scale)
     )
     return segments
 
@@ -337,6 +405,7 @@ def _segment_to_json(
     start_index: int,
     end_index: int,
     key: tuple[str, str | None],
+    scale: float,
 ) -> dict[str, object]:
     kind, provenance_name = key
     return {
@@ -349,18 +418,22 @@ def _segment_to_json(
         "end_deg": samples[end_index].crank_deg,
         "draw_line": kind == "quantity",
         "points": [
-            _segment_point(sample) for sample in samples[start_index : end_index + 1]
+            _segment_point(sample, scale) for sample in samples[start_index : end_index + 1]
         ],
     }
 
 
-def _segment_point(sample: _ProjectionSample) -> dict[str, object]:
-    return {
+def _segment_point(sample: _ProjectionSample, scale: float) -> dict[str, object]:
+    serialized = {
         "sample_index": sample.index,
         "crank_deg": sample.crank_deg,
         "value": sample.answer.get("value"),
         "answer_kind": sample.answer["kind"],
     }
+    confidence = _confidence_for_serialized_answer(sample.answer, scale)
+    if confidence is not None:
+        serialized["confidence"] = confidence
+    return serialized
 
 
 def _require_finite(value: float, label: str) -> None:

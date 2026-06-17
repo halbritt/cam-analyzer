@@ -142,7 +142,7 @@ def render_svg_chart_from_card_data(
     approximate_derivatives: bool,
     chart_step_deg: float = 5.0,
 ) -> str:
-    """Build profiles from parsed card data and render the valve-lift SVG chart."""
+    """Build profiles from parsed card data and render the SVAJ SVG chart."""
 
     projection = _chart_projection_from_card_data(
         data,
@@ -176,14 +176,16 @@ def _chart_projection_from_card_data(
         "provenance_rendering_grammar",
         "sampled_c5_series",
         "refusal_segments",
-        "static_valve_lift_svg",
+        "static_svaj_svg",
+        "threshold_duration_table",
+        "confidence_bands",
+        "profile_quality_warnings",
+        "svaj_stack_svg",
     )
     projection["deferred"] = (
         "echarts_ssr_adapter",
         "chart_suite_svg_export",
         "interactive_webapp",
-        "uncertainty_bands",
-        "svaj_stack",
         "piston_to_valve_collision_view",
         "go_measure_this_overlay",
     )
@@ -249,13 +251,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--approximate",
         action="store_true",
-        help="answer otherwise-refused higher derivatives with an EXTRAPOLATED ballpark",
+        help="allow operator approximation hooks for derivative queries that would otherwise refuse",
     )
     parser.add_argument(
         "--charts",
         choices=("markdown", "json", "svg"),
         default="markdown",
-        help="output the default Markdown report, RFC-0004 chart JSON, or static SVG lift chart",
+        help="output the default Markdown report, RFC-0004 chart JSON, or static SVAJ SVG chart",
     )
     parser.add_argument(
         "--chart-step-deg",

@@ -8,7 +8,7 @@ from cam_analyzer.sources.cam_card import (
     CHECKING_LIFT_IN,
     CamCard,
     CamLobeSpec,
-    SinePowerCamCardOperator,
+    PolynomialMotionLawCamCardOperator,
     exhaust_profile_from_cam_card,
     intake_profile_from_cam_card,
     profiles_from_cam_card,
@@ -43,19 +43,35 @@ def test_public_factories_return_intake_and_exhaust_cam_profiles() -> None:
     assert exhaust_profile_from_cam_card(card).max_lift() == profiles.exhaust.max_lift()
 
 
-def test_sine_power_operator_fits_peak_lift_duration_050_and_lobe_center() -> None:
+def test_motion_law_operator_fits_hard_timing_constraints() -> None:
     card = CamCard.wr250r_reference()
-    intake_operator = SinePowerCamCardOperator(card.intake, "intake")
-    exhaust_operator = SinePowerCamCardOperator(card.exhaust, "exhaust")
+    intake_operator = PolynomialMotionLawCamCardOperator(card.intake, "intake")
+    exhaust_operator = PolynomialMotionLawCamCardOperator(card.exhaust, "exhaust")
 
-    assert intake_operator.power == pytest.approx(1.016, abs=0.001)
-    assert exhaust_operator.power == pytest.approx(1.001, abs=0.001)
     assert intake_operator.evaluate(109.5) == pytest.approx(0.360)
     assert exhaust_operator.evaluate(615.5) == pytest.approx(0.360)
     assert intake_operator.evaluate(710.5) == pytest.approx(0.050)
     assert intake_operator.evaluate(228.5) == pytest.approx(0.050)
     assert exhaust_operator.evaluate(492.5) == pytest.approx(0.050)
     assert exhaust_operator.evaluate(18.5) == pytest.approx(0.050)
+
+
+def test_motion_law_operator_has_continuous_velocity_and_acceleration_at_knots() -> None:
+    operator = PolynomialMotionLawCamCardOperator(CamCard.wr250r_reference().intake, "intake")
+    knot_degrees = (
+        operator.advertised_open_deg,
+        operator.opening_050_deg,
+        (operator.centerline_crank_deg - operator.dwell_half_width_deg) % 720.0,
+        (operator.centerline_crank_deg + operator.dwell_half_width_deg) % 720.0,
+        operator.closing_050_deg,
+        operator.advertised_close_deg,
+    )
+
+    for crank_deg in knot_degrees:
+        for order in (1, 2):
+            left = operator.derivative(order, crank_deg - 1e-6)
+            right = operator.derivative(order, crank_deg + 1e-6)
+            assert left == pytest.approx(right, abs=2e-4)
 
 
 def test_generated_profiles_report_reference_events_and_durations_at_050() -> None:
@@ -92,19 +108,19 @@ def test_published_050_open_and_close_boundaries_stamp_inferred() -> None:
     # downstream consumer probing lift_at(closing) does not see EXTRAPOLATED.
     profiles = profiles_from_cam_card(CamCard.wr250r_reference())
 
-    intake_open = SinePowerCamCardOperator(CamCard.wr250r_reference().intake, "intake").opening_050_deg
-    intake_close = SinePowerCamCardOperator(CamCard.wr250r_reference().intake, "intake").closing_050_deg
+    intake_open = PolynomialMotionLawCamCardOperator(CamCard.wr250r_reference().intake, "intake").opening_050_deg
+    intake_close = PolynomialMotionLawCamCardOperator(CamCard.wr250r_reference().intake, "intake").closing_050_deg
     assert profiles.intake.lift_at(Angle.crank(intake_open)).provenance == Provenance.INFERRED
     assert profiles.intake.lift_at(Angle.crank(intake_close)).provenance == Provenance.INFERRED
 
-    exhaust_close = SinePowerCamCardOperator(CamCard.wr250r_reference().exhaust, "exhaust").closing_050_deg
+    exhaust_close = PolynomialMotionLawCamCardOperator(CamCard.wr250r_reference().exhaust, "exhaust").closing_050_deg
     assert profiles.exhaust.lift_at(Angle.crank(exhaust_close)).provenance == Provenance.INFERRED
 
     # The nose centerline stays extrapolated; the published boundary fix is local.
     assert profiles.intake.lift_at(Angle.crank(109.5)).provenance == Provenance.EXTRAPOLATED
 
 
-def test_cam_card_derivatives_are_limited_to_supported_mid_flank_velocity() -> None:
+def test_cam_card_derivatives_are_model_derived_and_never_measured() -> None:
     profile = profiles_from_cam_card(CamCard.wr250r_reference()).intake
 
     velocity = profile.velocity_at(Angle.crank(60.0))
@@ -112,9 +128,12 @@ def test_cam_card_derivatives_are_limited_to_supported_mid_flank_velocity() -> N
     assert velocity.provenance != Provenance.MEASURED
 
     nose_velocity = profile.velocity_at(Angle.crank(109.5))
-    assert isinstance(nose_velocity, Refusal)
+    assert not isinstance(nose_velocity, Refusal)
     assert nose_velocity.provenance == Provenance.EXTRAPOLATED
 
     acceleration = profile.acceleration_at(Angle.crank(60.0))
-    assert isinstance(acceleration, Refusal)
-    assert "backing lift data" in acceleration.remedy
+    jerk = profile.jerk_at(Angle.crank(60.0))
+    assert not isinstance(acceleration, Refusal)
+    assert not isinstance(jerk, Refusal)
+    assert acceleration.provenance == Provenance.EXTRAPOLATED
+    assert jerk.provenance == Provenance.EXTRAPOLATED

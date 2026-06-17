@@ -10,6 +10,10 @@ from cam_analyzer.analysis.dynamic_compression import (
     analyze_dynamic_compression,
 )
 from cam_analyzer.analysis.piston_to_valve import PistonToValveInput, evaluate_piston_to_valve
+from cam_analyzer.analysis.profile_quality import (
+    profile_quality_warnings,
+    threshold_duration_table,
+)
 from cam_analyzer.analysis.spring_safety import SpringSafetyInput, evaluate_spring_safety
 from cam_analyzer.analysis.timing import basic_timing_map
 from cam_analyzer.profile import CamProfile
@@ -54,6 +58,15 @@ def render_markdown_report(
         f"- Exhaust max lift: {_format_value(exhaust.max_lift())}",
         f"- Intake area under curve: {_format_value(intake.area_under_curve())}",
         f"- Exhaust area under curve: {_format_value(exhaust.area_under_curve())}",
+        "",
+        "## Lift threshold durations",
+        "| Lift | Intake duration | Exhaust duration |",
+        "|---|---:|---:|",
+        *_threshold_duration_lines(intake, exhaust),
+        "",
+        "## Profile quality warnings",
+        *_quality_warning_lines("intake", intake),
+        *_quality_warning_lines("exhaust", exhaust),
         "",
         "## Timing",
         f"- Intake centerline: {_format_angle(timing.intake_centerline)}",
@@ -140,3 +153,24 @@ def _format_angles(angles: Iterable[Angle[Crank]]) -> str:
 
 def _format_verdict(verdict: SafetyVerdict) -> str:
     return verdict.value
+
+
+def _threshold_duration_lines(intake: CamProfile, exhaust: CamProfile) -> list[str]:
+    intake_rows = threshold_duration_table(intake)
+    exhaust_rows = threshold_duration_table(exhaust)
+    return [
+        f"| {float(intake_row.threshold):.3f} in | "
+        f"{intake_row.duration.degrees:.3f} deg | "
+        f"{exhaust_row.duration.degrees:.3f} deg |"
+        for intake_row, exhaust_row in zip(intake_rows, exhaust_rows)
+    ]
+
+
+def _quality_warning_lines(side: str, profile: CamProfile) -> list[str]:
+    warnings = profile_quality_warnings(profile)
+    if not warnings:
+        return [f"- {side}: no profile-quality warnings"]
+    return [
+        f"- {side}: {warning.severity.upper()} {warning.code} - {warning.message}"
+        for warning in warnings
+    ]

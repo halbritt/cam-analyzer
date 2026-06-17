@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -12,10 +11,9 @@ from cam_analyzer.quantity import Provenance
 
 CHECKING_LIFT_IN = 0.050
 NOSE_UNSUPPORTED_HALF_WIDTH_DEG = 6.0
-# Below this sin(phase) the fitted sine-power's high-order analytic derivatives
-# blow up (negative fractional powers near the flank edges). Even the opt-in
-# approximation refuses there rather than return a meaningless spike.
-_APPROX_MIN_SINE = 0.05
+_HIGH_LIFT_DWELL_FRACTION = 0.08
+_MIN_DWELL_HALF_WIDTH_DEG = 6.0
+_MAX_DWELL_HALF_WIDTH_DEG = 14.0
 # The published @0.050" opening/closing angles sit on the inferred region's
 # boundary. Regions are half-open [start, end), so the closing angle (a region
 # end) would otherwise read back as EXTRAPOLATED. Pad each inferred span by a
@@ -26,6 +24,39 @@ _APPROX_MIN_SINE = 0.05
 _BOUNDARY_EPSILON_DEG = 1e-6
 
 CamSide = Literal["intake", "exhaust"]
+
+
+@dataclass(frozen=True, slots=True)
+class _HermiteSegment:
+    start_offset_deg: float
+    end_offset_deg: float
+    start_lift_in: float
+    end_lift_in: float
+    start_velocity_in_per_deg: float
+    end_velocity_in_per_deg: float
+    start_accel_in_per_deg2: float = 0.0
+    end_accel_in_per_deg2: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.end_offset_deg <= self.start_offset_deg:
+            raise ValueError("Hermite segment end must be after start")
+
+    def contains(self, offset_deg: float) -> bool:
+        return self.start_offset_deg <= offset_deg <= self.end_offset_deg
+
+    def evaluate(self, offset_deg: float, order: int = 0) -> float:
+        span_deg = self.end_offset_deg - self.start_offset_deg
+        u = (offset_deg - self.start_offset_deg) / span_deg
+        values = _quintic_basis(order, u)
+        scale = span_deg**order
+        return (
+            values[0] * self.start_lift_in
+            + values[1] * span_deg * self.start_velocity_in_per_deg
+            + values[2] * span_deg**2 * self.start_accel_in_per_deg2
+            + values[3] * self.end_lift_in
+            + values[4] * span_deg * self.end_velocity_in_per_deg
+            + values[5] * span_deg**2 * self.end_accel_in_per_deg2
+        ) / scale
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,26 +117,34 @@ class CamCardProfiles:
     exhaust: CanonicalCamProfile
 
 
-class SinePowerCamCardOperator:
-    """Sine-power cam-card approximation fitted to the published card.
+class PolynomialMotionLawCamCardOperator:
+    """Constrained cam-card reconstruction using piecewise quintic motion laws.
 
     Satisfies :class:`LiftOperator` structurally, not by subclassing (#6); the
     static conformance check lives at the foot of this module.
 
-    A fixed ``sin^2`` half-sine cannot fit both advertised duration and the
-    duration at 0.050 in for the reference card. This operator uses the named
-    variant ``peak * sin(pi * t / advertised_duration) ** power`` and solves the
-    exponent so the curve crosses 0.050 in at the published duration. The curve
-    remains an approximation and never produces MEASURED evidence.
+    The sparse cam card provides hard timing/lift constraints, not a measured lobe.
+    This operator therefore uses a conservative motion-law reconstruction:
+    lash ramp, opening flank, high-lift dwell, closing flank, and closing ramp
+    are each quintic Hermite segments. Lift, velocity, and acceleration are
+    continuous at every knot and jerk is finite, while all published events are
+    enforced as construction constraints. The curve remains inferred/extrapolated
+    cam-card evidence and never produces MEASURED lift.
     """
 
-    name = "SinePowerCamCardApproximation"
+    name = "PolynomialMotionLawCamCardApproximation"
 
     def __init__(self, lobe: CamLobeSpec, side: CamSide):
         self._lobe = lobe
         self._side = side
         self._centerline_crank_deg = _centerline_crank_deg(lobe, side)
-        self._power = self._fit_power(lobe)
+        self._dwell_half_width_deg = _dwell_half_width(lobe)
+        self._threshold_velocity_in_per_deg = _threshold_velocity(lobe, self._dwell_half_width_deg)
+        self._segments = _motion_segments(
+            lobe,
+            dwell_half_width_deg=self._dwell_half_width_deg,
+            threshold_velocity_in_per_deg=self._threshold_velocity_in_per_deg,
+        )
 
     @property
     def side(self) -> CamSide:
@@ -132,111 +171,46 @@ class SinePowerCamCardOperator:
         return (self._centerline_crank_deg + self._lobe.duration_050_deg / 2.0) % 720.0
 
     @property
-    def power(self) -> float:
-        return self._power
+    def dwell_half_width_deg(self) -> float:
+        return self._dwell_half_width_deg
+
+    @property
+    def threshold_velocity_in_per_deg(self) -> float:
+        return self._threshold_velocity_in_per_deg
 
     def evaluate(self, crank_deg: float) -> float:
         offset = self._offset_from_center(crank_deg)
-        half_duration = self._lobe.advertised_duration_deg / 2.0
-        if abs(offset) > half_duration:
-            return 0.0
-
-        t = offset + half_duration
-        phase = math.pi * t / self._lobe.advertised_duration_deg
-        sine = max(0.0, math.sin(phase))
-        return float(self._lobe.valve_lift_in * sine**self._power)
+        return self._evaluate_offset(offset, order=0)
 
     def derivative(self, order: int, crank_deg: float) -> float:
-        if order != 1:
-            raise ValueError("cam-card approximation supports only first derivative in mid-flank regions")
-        if self.max_supported_derivative(crank_deg) < 1:
-            raise ValueError("first derivative unsupported in low-lift, nose, or closed regions")
-
+        if order not in (1, 2, 3):
+            raise ValueError("cam-card motion-law operator supports derivative orders 1-3")
         offset = self._offset_from_center(crank_deg)
-        t = offset + self._lobe.advertised_duration_deg / 2.0
-        phase = math.pi * t / self._lobe.advertised_duration_deg
-        sine = math.sin(phase)
-        cosine = math.cos(phase)
-        scale = math.pi / self._lobe.advertised_duration_deg
-        return float(
-            self._lobe.valve_lift_in
-            * self._power
-            * sine ** (self._power - 1.0)
-            * cosine
-            * scale
-        )
+        return self._evaluate_offset(offset, order=order)
 
     def max_supported_derivative(self, crank_deg: float) -> int:
-        offset = abs(self._offset_from_center(crank_deg))
-        if offset >= self._lobe.duration_050_deg / 2.0:
-            return 0
-        if offset <= NOSE_UNSUPPORTED_HALF_WIDTH_DEG:
-            return 0
-        return 1
-
-    def max_approximate_derivative(self, crank_deg: float) -> int:
-        """Highest order this operator can *approximate* (orders 1-3).
-
-        A ballpark only — distinct from :meth:`max_supported_derivative`, which is
-        what the operator can *justify*. Returns 3 across the active lobe (nose and
-        mid-flank), 0 in the closed region and at the extreme flank edges where the
-        analytic high-order derivatives blow up.
-        """
-        offset = self._offset_from_center(crank_deg)
-        half_duration = self._lobe.advertised_duration_deg / 2.0
-        if abs(offset) >= half_duration:
-            return 0
-        phase = math.pi * (offset + half_duration) / self._lobe.advertised_duration_deg
-        if math.sin(phase) < _APPROX_MIN_SINE:
-            return 0
         return 3
 
-    def approximate_derivative(self, order: int, crank_deg: float) -> float:
-        """Analytic n-th derivative of the fitted sine-power lobe (orders 1-3).
+    def max_approximate_derivative(self, crank_deg: float) -> int:
+        """Compatibility hook for the opt-in derivative path."""
+        return self.max_supported_derivative(crank_deg)
 
-        For the opt-in approximate path only; callers stamp the result
-        EXTRAPOLATED. The 2nd/3rd derivatives are governed by the assumed
-        sine-power flank shape, not the cam card, so they are a ballpark, not
-        analysis-grade.
-        """
-        if order not in (1, 2, 3):
-            raise ValueError("approximate_derivative supports orders 1-3")
-        offset = self._offset_from_center(crank_deg)
-        half_duration = self._lobe.advertised_duration_deg / 2.0
-        if abs(offset) > half_duration:
-            return 0.0
-        phase = math.pi * (offset + half_duration) / self._lobe.advertised_duration_deg
-        cosine = math.cos(phase)
-        sine = max(math.sin(phase), _APPROX_MIN_SINE)  # guard negative-power blow-up
-        scale = math.pi / self._lobe.advertised_duration_deg
-        power = self._power
-        lift = self._lobe.valve_lift_in
-        if order == 1:
-            return float(lift * power * sine ** (power - 1.0) * cosine * scale)
-        if order == 2:
-            return float(
-                lift * power * scale**2
-                * ((power - 1.0) * sine ** (power - 2.0) * cosine**2 - sine**power)
-            )
-        return float(
-            lift * power * scale**3
-            * (
-                (power - 1.0) * (power - 2.0) * sine ** (power - 3.0) * cosine**3
-                - (3.0 * power - 2.0) * sine ** (power - 1.0) * cosine
-            )
-        )
+    def approximate_derivative(self, order: int, crank_deg: float) -> float:
+        return self.derivative(order, crank_deg)
 
     def _offset_from_center(self, crank_deg: float) -> float:
         return ((crank_deg - self._centerline_crank_deg + 360.0) % 720.0) - 360.0
 
-    @staticmethod
-    def _fit_power(lobe: CamLobeSpec) -> float:
-        ramp_width = (lobe.advertised_duration_deg - lobe.duration_050_deg) / 2.0
-        base = math.sin(math.pi * ramp_width / lobe.advertised_duration_deg)
-        target = CHECKING_LIFT_IN / lobe.valve_lift_in
-        if not 0.0 < base < 1.0 or not 0.0 < target < 1.0:
-            raise ValueError("cam-card durations cannot fit a sine-power approximation")
-        return math.log(target) / math.log(base)
+    def _evaluate_offset(self, offset_deg: float, order: int) -> float:
+        half_duration = self._lobe.advertised_duration_deg / 2.0
+        if abs(offset_deg) > half_duration:
+            return 0.0
+        for segment in self._segments:
+            if segment.contains(offset_deg):
+                return float(segment.evaluate(offset_deg, order=order))
+        if -self._dwell_half_width_deg <= offset_deg <= self._dwell_half_width_deg:
+            return self._lobe.valve_lift_in if order == 0 else 0.0
+        return 0.0
 
 
 def profiles_from_cam_card(
@@ -244,10 +218,11 @@ def profiles_from_cam_card(
 ) -> CamCardProfiles:
     """Return source-agnostic intake and exhaust profiles from one cam card.
 
-    With ``approximate_derivatives=True`` the profiles answer otherwise-refused
-    higher derivatives (acceleration/jerk, and velocity at the nose) with an
-    EXTRAPOLATED ballpark instead of a Refusal — useful for a rough shape, but
-    never trustworthy enough to pass the cliff-analysis fitness gates.
+    The cam-card operator answers velocity, acceleration, and jerk from its
+    constrained motion law, stamped as model-derived profile answers rather than
+    measured valvetrain data. ``approximate_derivatives`` remains a compatibility
+    hook for operators that would otherwise refuse a derivative query; it does not
+    upgrade cam-card trust.
     """
     return CamCardProfiles(
         intake=intake_profile_from_cam_card(
@@ -278,7 +253,7 @@ def exhaust_profile_from_cam_card(
 def _profile_from_lobe(
     lobe: CamLobeSpec, side: CamSide, *, approximate_derivatives: bool = False
 ) -> CanonicalCamProfile:
-    operator = SinePowerCamCardOperator(lobe, side)
+    operator = PolynomialMotionLawCamCardOperator(lobe, side)
     samples = tuple(operator.evaluate(float(degree)) for degree in range(720))
     model = CanonicalLiftModel(
         samples_720=samples,
@@ -289,21 +264,146 @@ def _profile_from_lobe(
     return CanonicalCamProfile(model)
 
 
-def _provenance_for_cam_card_operator(operator: SinePowerCamCardOperator) -> ProvenanceMap:
+def _provenance_for_cam_card_operator(operator: PolynomialMotionLawCamCardOperator) -> ProvenanceMap:
     center = operator.centerline_crank_deg
+    unsupported_half_width = max(NOSE_UNSUPPORTED_HALF_WIDTH_DEG, operator.dwell_half_width_deg)
     inferred_regions = (
         (
             operator.opening_050_deg - _BOUNDARY_EPSILON_DEG,
-            (center - NOSE_UNSUPPORTED_HALF_WIDTH_DEG) % 720.0,
+            (center - unsupported_half_width) % 720.0,
             Provenance.INFERRED,
         ),
         (
-            (center + NOSE_UNSUPPORTED_HALF_WIDTH_DEG) % 720.0,
+            (center + unsupported_half_width) % 720.0,
             operator.closing_050_deg + _BOUNDARY_EPSILON_DEG,
             Provenance.INFERRED,
         ),
     )
     return ProvenanceMap.from_default_and_regions(Provenance.EXTRAPOLATED, inferred_regions)
+
+
+def _motion_segments(
+    lobe: CamLobeSpec,
+    *,
+    dwell_half_width_deg: float,
+    threshold_velocity_in_per_deg: float,
+) -> tuple[_HermiteSegment, ...]:
+    half_advertised = lobe.advertised_duration_deg / 2.0
+    half_050 = lobe.duration_050_deg / 2.0
+    return (
+        _HermiteSegment(
+            -half_advertised,
+            -half_050,
+            0.0,
+            CHECKING_LIFT_IN,
+            0.0,
+            threshold_velocity_in_per_deg,
+        ),
+        _HermiteSegment(
+            -half_050,
+            -dwell_half_width_deg,
+            CHECKING_LIFT_IN,
+            lobe.valve_lift_in,
+            threshold_velocity_in_per_deg,
+            0.0,
+        ),
+        _HermiteSegment(
+            dwell_half_width_deg,
+            half_050,
+            lobe.valve_lift_in,
+            CHECKING_LIFT_IN,
+            0.0,
+            -threshold_velocity_in_per_deg,
+        ),
+        _HermiteSegment(
+            half_050,
+            half_advertised,
+            CHECKING_LIFT_IN,
+            0.0,
+            -threshold_velocity_in_per_deg,
+            0.0,
+        ),
+    )
+
+
+def _dwell_half_width(lobe: CamLobeSpec) -> float:
+    requested = lobe.duration_050_deg * _HIGH_LIFT_DWELL_FRACTION / 2.0
+    available = lobe.duration_050_deg / 2.0 - 1.0
+    return min(max(requested, _MIN_DWELL_HALF_WIDTH_DEG), _MAX_DWELL_HALF_WIDTH_DEG, available)
+
+
+def _threshold_velocity(lobe: CamLobeSpec, dwell_half_width_deg: float) -> float:
+    ramp_width = (lobe.advertised_duration_deg - lobe.duration_050_deg) / 2.0
+    flank_width = lobe.duration_050_deg / 2.0 - dwell_half_width_deg
+    ramp_average = CHECKING_LIFT_IN / ramp_width
+    flank_average = (lobe.valve_lift_in - CHECKING_LIFT_IN) / flank_width
+    return min(1.5 * ramp_average, 1.5 * flank_average)
+
+
+def _quintic_basis(order: int, u: float) -> tuple[float, float, float, float, float, float]:
+    if order == 0:
+        return _quintic_position_basis(u)
+    if order == 1:
+        return _quintic_velocity_basis(u)
+    if order == 2:
+        return _quintic_acceleration_basis(u)
+    if order == 3:
+        return _quintic_jerk_basis(u)
+    raise ValueError("quintic Hermite basis supports derivative orders 0-3")
+
+
+def _quintic_position_basis(u: float) -> tuple[float, float, float, float, float, float]:
+    u2 = u * u
+    u3 = u2 * u
+    u4 = u3 * u
+    u5 = u4 * u
+    return (
+        1.0 - 10.0 * u3 + 15.0 * u4 - 6.0 * u5,
+        u - 6.0 * u3 + 8.0 * u4 - 3.0 * u5,
+        0.5 * u2 - 1.5 * u3 + 1.5 * u4 - 0.5 * u5,
+        10.0 * u3 - 15.0 * u4 + 6.0 * u5,
+        -4.0 * u3 + 7.0 * u4 - 3.0 * u5,
+        0.5 * u3 - u4 + 0.5 * u5,
+    )
+
+
+def _quintic_velocity_basis(u: float) -> tuple[float, float, float, float, float, float]:
+    u2 = u * u
+    u3 = u2 * u
+    u4 = u3 * u
+    return (
+        -30.0 * u2 + 60.0 * u3 - 30.0 * u4,
+        1.0 - 18.0 * u2 + 32.0 * u3 - 15.0 * u4,
+        u - 4.5 * u2 + 6.0 * u3 - 2.5 * u4,
+        30.0 * u2 - 60.0 * u3 + 30.0 * u4,
+        -12.0 * u2 + 28.0 * u3 - 15.0 * u4,
+        1.5 * u2 - 4.0 * u3 + 2.5 * u4,
+    )
+
+
+def _quintic_acceleration_basis(u: float) -> tuple[float, float, float, float, float, float]:
+    u2 = u * u
+    u3 = u2 * u
+    return (
+        -60.0 * u + 180.0 * u2 - 120.0 * u3,
+        -36.0 * u + 96.0 * u2 - 60.0 * u3,
+        1.0 - 9.0 * u + 18.0 * u2 - 10.0 * u3,
+        60.0 * u - 180.0 * u2 + 120.0 * u3,
+        -24.0 * u + 84.0 * u2 - 60.0 * u3,
+        3.0 * u - 12.0 * u2 + 10.0 * u3,
+    )
+
+
+def _quintic_jerk_basis(u: float) -> tuple[float, float, float, float, float, float]:
+    u2 = u * u
+    return (
+        -60.0 + 360.0 * u - 360.0 * u2,
+        -36.0 + 192.0 * u - 180.0 * u2,
+        -9.0 + 36.0 * u - 30.0 * u2,
+        60.0 - 360.0 * u + 360.0 * u2,
+        -24.0 + 168.0 * u - 180.0 * u2,
+        3.0 - 24.0 * u + 30.0 * u2,
+    )
 
 
 def _centerline_crank_deg(lobe: CamLobeSpec, side: CamSide) -> float:
@@ -315,7 +415,9 @@ def _centerline_crank_deg(lobe: CamLobeSpec, side: CamSide) -> float:
 if TYPE_CHECKING:
     # Static structural-conformance check (#6): mypy errors here if the operator
     # stops satisfying the LiftOperator Protocol.
-    def _assert_sine_power_is_a_lift_operator(op: SinePowerCamCardOperator) -> LiftOperator:
+    def _assert_motion_law_is_a_lift_operator(
+        op: PolynomialMotionLawCamCardOperator,
+    ) -> LiftOperator:
         return op
 
 
@@ -324,7 +426,7 @@ __all__ = [
     "CamCard",
     "CamCardProfiles",
     "CamLobeSpec",
-    "SinePowerCamCardOperator",
+    "PolynomialMotionLawCamCardOperator",
     "exhaust_profile_from_cam_card",
     "intake_profile_from_cam_card",
     "profiles_from_cam_card",

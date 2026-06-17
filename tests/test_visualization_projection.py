@@ -39,9 +39,24 @@ def test_projection_samples_multiple_profiles_with_stamped_quantities() -> None:
     assert nose_answer["frame"] == "valve_side"
     assert nose_answer["provenance"] == "EXTRAPOLATED"
     assert nose_answer["provenance_rank"] == 0
+    assert lift_samples[0]["confidence"]["p95_half_width"] > 0.0
+    assert lift_samples[2]["confidence"]["basis"] == "EXTRAPOLATED"
+    assert [row["threshold"]["value"] for row in intake["threshold_durations"]] == [
+        0.001,
+        0.006,
+        0.020,
+        0.050,
+        0.100,
+        0.200,
+    ]
+    assert {warning["code"] for warning in intake["quality_warnings"]} >= {
+        "underconstrained_reconstruction",
+        "implausibly_symmetric_lobe",
+        "model_derived_derivatives",
+    }
 
 
-def test_refused_samples_become_no_line_segments_without_interpolation() -> None:
+def test_derivative_projection_includes_extrapolated_model_samples() -> None:
     intake = profiles_from_cam_card(CamCard.wr250r_reference()).intake
 
     projection = project_cam_profiles(
@@ -49,27 +64,13 @@ def test_refused_samples_become_no_line_segments_without_interpolation() -> None
         sample_degrees=(60.0, 109.5, 120.0),
     )
 
-    velocity = projection["profiles"][0]["series"]["velocity"]
-    samples = velocity["samples"]
-    refused_answer = samples[1]["answer"]
-    assert refused_answer["kind"] == "refusal"
-    assert refused_answer["requested"] == "derivative order 1 at 109.500 deg"
-    assert "supports derivative order 0" in refused_answer["reason"]
-    assert refused_answer["provenance"] == "EXTRAPOLATED"
-
-    segments = velocity["segments"]
-    assert [segment["kind"] for segment in segments] == ["quantity", "refusal", "quantity"]
-    refused_segment = segments[1]
-    assert refused_segment["draw_line"] is False
-    assert "style" not in refused_segment
-    assert refused_segment["points"] == [
-        {
-            "sample_index": 1,
-            "crank_deg": 109.5,
-            "value": None,
-            "answer_kind": "refusal",
-        }
-    ]
+    acceleration = projection["profiles"][0]["series"]["acceleration"]
+    samples = acceleration["samples"]
+    assert all(sample["answer"]["kind"] == "quantity" for sample in samples)
+    assert all(sample["answer"]["provenance"] == "EXTRAPOLATED" for sample in samples)
+    assert acceleration["segments"][0]["draw_line"] is True
+    assert acceleration["segments"][0]["provenance"] == "EXTRAPOLATED"
+    assert acceleration["segments"][0]["points"][0]["confidence"]["basis"] == "EXTRAPOLATED"
 
 
 def test_projection_includes_events_and_duration_when_threshold_lifts_are_supplied() -> None:

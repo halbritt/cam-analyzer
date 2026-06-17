@@ -47,16 +47,24 @@ and spring safety are downstream of, and source-blind to, that profile.
 
 ## Cam-card approximation
 
-Milestone 1 fits the published card with `SinePowerCamCardOperator`, exposed
-through `profiles_from_cam_card()`. A fixed `sin^2` half-sine cannot fit both advertised
-duration and duration at 0.050 in for the reference card, so the operator uses:
+Milestone 1 fits the published card with `PolynomialMotionLawCamCardOperator`,
+exposed through `profiles_from_cam_card()`. The operator is a constrained
+piecewise-quintic motion law, not a sine-power visual fit. It builds finite lash
+ramps, opening/closing flanks, and a high-lift dwell region from quintic Hermite
+segments so lift, velocity, and acceleration are continuous and jerk is finite.
 
-```text
-lift = peak * sin(pi * t / advertised_duration) ** power
-```
+The published cam-card events are hard constraints. The WR250R Web Cam 81-651
+profile must cross 0.050 in exactly at:
 
-The exponent is solved so the generated curve crosses 0.050 in at the published
-0.050-duration events. This is still a cam-card approximation: generated values
-are inferred or extrapolated, never measured, and unsupported low-lift, nose, or
-higher-derivative queries must refuse or downgrade rather than fabricate
-precision.
+| Event | Crank angle |
+|---|---:|
+| Intake opens @0.050 | 9.5° BTDC |
+| Intake closes @0.050 | 48.5° ABDC |
+| Exhaust opens @0.050 | 47.5° BBDC |
+| Exhaust closes @0.050 | 18.5° ATDC |
+
+The generated curve also preserves the advertised duration and peak lift. This
+is still a cam-card approximation: generated values are inferred or
+extrapolated, never measured. The SVAJ stack and quality warnings intentionally
+call out symmetric flanks, model-derived derivatives, and high-lift dwell that
+are motion-law assumptions rather than observed lobe geometry.

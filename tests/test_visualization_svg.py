@@ -44,6 +44,10 @@ def test_valve_lift_svg_uses_projection_provenance_styles() -> None:
     assert 'stroke-dasharray="6 4"' in svg
     assert 'stroke-dasharray="12 7"' in svg
     assert "cam_analyzer.visualization_projection.v1" in svg
+    assert "Velocity (in/deg)" in svg
+    assert "Acceleration (in/deg^2)" in svg
+    assert "Jerk (in/deg^3)" in svg
+    assert 'data-confidence="95"' in svg
 
 
 def test_valve_lift_svg_footer_does_not_overlap_provenance_legend() -> None:

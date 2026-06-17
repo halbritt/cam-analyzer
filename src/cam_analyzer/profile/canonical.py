@@ -51,8 +51,8 @@ class CanonicalLiftModel:
     lift_unit: str = "inch"
     lift_frame: str = "valve_side"
     source: str = "canonical"
-    # Opt-in: answer otherwise-refused derivatives with an EXTRAPOLATED ballpark
-    # (operator must expose approximate_derivative/max_approximate_derivative).
+    # Opt-in compatibility path: answer otherwise-refused derivatives with an
+    # EXTRAPOLATED ballpark when an operator exposes approximation hooks.
     approximate_derivatives: bool = False
 
 
@@ -215,10 +215,10 @@ class CanonicalCamProfile:
     def _supports_measured_safety(self, derivative_order: int) -> bool:
         """Gate cliff verdicts (PTV, spring) behind measured, well-sampled curves.
 
-        Cam-card approximations stay blocked: their lift provenance is never
-        MEASURED and their operator surrenders derivative support at the nose and
-        seat. A real measured profile whose operator justifies the required
-        derivative order everywhere (D014) may carry a measured-clearance verdict.
+        Cam-card approximations stay blocked because their lift provenance is never
+        MEASURED, even if the operator exposes model-derived derivatives for charts.
+        A real measured profile whose operator justifies the required derivative
+        order everywhere (D014) may carry a measured-clearance verdict.
         Unlike :meth:`_supports_derivative_everywhere`, this does not apply the
         derivative-map provenance ceiling: that ceiling governs what a returned
         derivative *value* may claim, not whether the curve is trustworthy enough

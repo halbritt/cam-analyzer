@@ -1,13 +1,14 @@
 # RFC 0004 — Visualization & chart suite (honest-by-construction)
 
-- **Status:** Accepted for the implemented projection/grammar/static-lift-renderer slice.
+- **Status:** Accepted for the implemented projection/grammar/static-SVAJ-renderer slice.
   **Build status:** `VERIFIED` partial — `cam-analyze --charts json` now emits the
   static, renderer-neutral projection and provenance/refusal grammar metadata;
-  `cam-analyze --charts svg` renders the valve-lift overlay SVG from that projection.
+  `cam-analyze --charts svg` renders the static SVAJ SVG from that projection.
   The default output remains the Markdown report from `render_markdown_report`
-  (`src/cam_analyzer/analysis/reporting.py`). ECharts, the full SVAJ stack,
-  uncertainty bands, the collision view, the measurement-plan overlay, and any web
-  layer remain `DESIGNED` / deferred.
+  (`src/cam_analyzer/analysis/reporting.py`), now including lift-threshold durations
+  and profile-quality warnings. ECharts, crop-proof export, calibrated uncertainty
+  math, the collision view, the measurement-plan overlay, and any web layer remain
+  `DESIGNED` / deferred.
 - **Date:** 2026-06-17
 - **Motivating ask:** "make me some pretty charts like other cam and combustion
   analysis software… maybe it becomes a webapp at some point. Use the reference cam,
@@ -32,7 +33,7 @@ charts." It starts with **how a chart is allowed to lie**, and forbids it.
 
 The load-bearing deliverable is a **Provenance Rendering Grammar** (§3.1): one
 reusable visual language — solid/dashed stroke, opacity, hatch, refuse-to-draw,
-a quantified uncertainty band, a derivative-order ceiling, and an uncroppable
+heuristic confidence bands, a derivative-order ceiling, and an uncroppable
 provenance footer — driven *mechanically* from the `ProvenanceMap`, so honesty is
 structural, not per-chart decoration. Every chart in the suite is just that grammar
 applied to a different projection.
@@ -48,17 +49,19 @@ On top of the grammar sit two tiers of charts:
   **"go measure THIS" overlay** (the tool ranks the single measurement that would
   collapse an `UNDECIDABLE` verdict into `PASS`/`FAIL`).
 
-The implemented slice is **static projection plus a first SVG lift renderer today**
+The implemented slice is **static projection plus a static SVAJ SVG renderer today**
 (§3.3): sampled C5 answers, refusals, segmented series, a provenance legend that a
-renderer may consume but may not upgrade, and a dependency-free static valve-lift
-overlay. ECharts server-side SVG and the identical spec in a future browser remain
-the intended richer rendering path, not built output.
+renderer may consume but may not upgrade, threshold-duration tables, profile-quality
+warnings, provenance-scaled p50/p95 confidence bands, and a dependency-free static
+lift/velocity/acceleration/jerk stack. ECharts server-side SVG and the identical spec
+in a future browser remain the intended richer rendering path, not built output.
 
-On the reference cam (Web Cam 81-651, a sine-power fit to 5 numbers), the honest
-result is blunt and is the whole point: most of every curve renders dashed, the
-density gutter shows mostly-zero support, and **the fly-cut readout says
-`UNDECIDABLE`, not a number** — because the minimum-clearance angle lands in the
-extrapolated nose. The charts are pretty *and* they tell you they're mostly guessing.
+On the reference cam (Web Cam 81-651, a constrained polynomial motion-law fit to a
+sparse cam card), the honest result is blunt and is the whole point: most of every
+curve renders dashed, derivative panels are explicitly model-derived, quality warnings
+flag symmetry/high-lift dwell/derivative assumptions, and **the future fly-cut readout
+must say `UNDECIDABLE`, not a number** when the minimum-clearance angle lands in an
+extrapolated region. The charts are pretty *and* they tell you where they are guessing.
 
 ## 2. Motivation
 
@@ -92,7 +95,7 @@ is therefore not a styling note; it is the acceptance criterion.
 - **Replacing the clay check.** Per RFC 0003, the collision view is an `INFERRED`
   screen that tells you whether/where to clay — never a `MEASURED` go-ahead.
 - **A full webapp.** The implemented slice builds only the static JSON projection,
-  grammar metadata, and a static valve-lift SVG. ECharts and the interactive app
+  grammar metadata, and a static SVAJ SVG. ECharts and the interactive app
   remain gated behind real triggers (§7), not built speculatively.
 - **New physics.** Charts project existing quantities. Where a chart needs a number
   the tool doesn't have (e.g. deck geometry for the collision zero-point), that gap
@@ -152,7 +155,8 @@ Absence of evidence becomes visible instead of being smoothed away.
 **3.1.5 The evidence-density gutter.** A thin strip sharing the X-axis histograms how
 many *real* cam-card points back each crank-angle bin. On the reference cam this is
 mostly zero (5 points across 720°), so the eye is drawn to how thin the curve's
-support actually is.
+support actually is. This remains part of the richer chart-suite design; the current
+static SVAJ SVG does not render the gutter.
 
 **3.1.6 The uncroppable provenance ledger.** A non-data footer band, baked into the
 SSR template at fixed pixel rows, carries the **input cam-card hash**, the **fit-model
@@ -160,10 +164,11 @@ version**, and the per-tag legend. An exported or screenshotted image is therefo
 self-authenticating: the caveat travels with the pixels and cannot be cropped off into
 a clean-looking "fact" for a forum post or a warranty dispute.
 
-**3.1.7 The quantified uncertainty band.** Extrapolated segments carry a band in
-**real lift units** (mm/in), widening with angular distance from the nearest supported
-point — not a dashed "vibe." This band's magnitude is the grammar's single hardest
-dependency; see the risk in §5 and the band-math open question in §7.
+**3.1.7 The quantified confidence band.** Implemented static charts carry p50/p95
+half-widths in real series units. The current band is provenance-scaled and deliberately
+conservative: measured values are tight, inferred regions are visibly wider, and
+extrapolated regions are much wider. It is not a calibrated statistical interval yet;
+see the risk in §5 and the band-math open question in §7.
 
 ### 3.2 The chart suite
 
@@ -226,28 +231,35 @@ dependency; see the risk in §5 and the band-math open question in §7.
   draws what it is given and may not upgrade provenance.
 - **CLI surface:** `cam-analyze <card.json> --charts json` is implemented and emits
   the projection for downstream/web use. `cam-analyze <card.json> --charts svg` is
-  implemented and writes a static valve-lift overlay SVG to stdout. A richer
+  implemented and writes a static SVAJ SVG to stdout. A richer
   `--out dir/` chart-suite export remains `DESIGNED`, not a supported flag. Default
   stays the Markdown report (no behavior change unless a chart flag is passed).
 
 ### 3.4 Seam in current code
 
 `analysis/projection.py` serializes already-computed `CamProfile` boundary answers
-to the JSON contract, `visualization/svg.py` renders the lift overlay from that
-contract, and `cli.py` exposes them through `--charts json` and `--charts svg`. The
-projection samples C5 queries only; analysis still does not import `sources`, and a
-chart can never reach *into* a source to recompute or upgrade provenance.
+to the JSON contract, `analysis/profile_quality.py` computes threshold durations,
+confidence bands, and quality warnings through the same boundary,
+`visualization/svg.py` renders the SVAJ stack from that contract, and `cli.py`
+exposes them through `--charts json` and `--charts svg`. The projection samples C5
+queries only; analysis still does not import `sources`, and a chart can never reach
+*into* a source to recompute or upgrade provenance.
 
 ### 3.5 Worked example — the reference cam (Web Cam 81-651, 13.5:1 build)
 
 Intake 0.360″ / 262° adv / 238°@.050″ / CL 109.5°; exhaust 0.360″ / 270° / 246° /
-CL 104.5°; LSA 107°; overlap@.050″ 28°. The lift curve is a sine-power fit to those
-5 numbers, so:
+CL 104.5°; LSA 107°; overlap@.050″ 28°. The lift curve is a constrained
+piecewise-quintic motion-law fit to those sparse numbers, so:
 
 - **Valve-lift overlay & SVAJ stack:** ramps render `INFERRED` (short-dash), the nose
-  and closed regions `EXTRAPOLATED` (long-dash + widening hatched band); the jerk panel
-  caption reads "max attainable provenance: EXTRAPOLATED" and is faded by the ceiling.
-- **Density gutter:** near-zero across 720° — visibly five thin spikes.
+  and closed regions `EXTRAPOLATED` (long-dash + widening confidence band); the jerk
+  panel is explicitly model-derived rather than measured valvetrain data.
+- **Threshold-duration table:** reports 0.001/0.006/0.020/0.050/0.100/0.200 in
+  durations from the same `CamProfile` query surface.
+- **Quality warnings:** flag underconstrained reconstruction, implausibly symmetric
+  flanks, high-lift dwell, and derivative magnitudes that deserve inspection.
+- **Evidence-density gutter (`DESIGNED`):** near-zero across 720° — visibly five thin
+  spikes once the richer chart suite renders it.
 - **Collision view & cut readout:** the minimum-clearance angle lands in the
   extrapolated nose → the readout is **`CUT ? — UNDECIDABLE (min clearance falls in
   EXTRAPOLATED region)`** and the bezel is locked AMBER. *This is the intended
@@ -275,10 +287,15 @@ measurement that would change that.*
   `visualization.grammar.STYLE_TABLE`, not from a second copy. Witness:
   `tests/test_cli.py::test_render_chart_projection_from_card_data_contains_stamped_samples`
   and `tests/test_visualization_grammar.py::test_style_legend_for_json_serializes_the_single_style_table`.
-- **[VERIFIED]** *Static valve-lift SVG:* `cam-analyze --charts svg` emits a
-  dependency-free SVG overlay from the same source-blind projection and provenance
-  legend. Witness: `tests/test_visualization_svg.py` and
+- **[VERIFIED]** *Static SVAJ SVG:* `cam-analyze --charts svg` emits a
+  dependency-free lift/velocity/acceleration/jerk SVG from the same source-blind
+  projection, confidence bands, and provenance legend. Witness:
+  `tests/test_visualization_svg.py` and
   `tests/test_cli.py::test_main_with_reference_flag_can_print_svg_chart`.
+- **[VERIFIED]** *Threshold durations and quality warnings:* the projection and
+  Markdown report include the standard cam-lift duration table and source-blind profile
+  warnings. Witness: `tests/test_profile_quality.py`,
+  `tests/test_visualization_projection.py`, and `tests/test_reference_report_golden.py`.
 - **[VERIFIED]** *Default behavior unchanged:* `cam-analyze --reference` still renders
   the committed Markdown report. Witness: `tests/test_reference_report_golden.py`.
 - **[DESIGNED]** *Crop survival:* render → crop to the plot area → assert the
@@ -300,13 +317,12 @@ measurement that would change that.*
   guard that coalesces adjacent same-or-weaker segments (always coalescing *toward* the
   weaker tag, never the stronger), with an adversarial alternating-map test.
 - **A fabricated uncertainty band is the same sin, relocated.** §3.1.7's band, and the
-  measurement ranking that integrates over it, are *theater* if the half-width is a
-  made-up constant — the tool would just move fabricated precision from the verdict into
-  the band. *Mitigate:* derive the band from the sine-power fit's **leave-one-out
-  residual** across its 5 points × angular distance from a supported point; stamp the
-  band's own provenance; until that exists, the band is a labeled `DESIGNED` stub and
-  the collision view stays `UNDECIDABLE` rather than drawing a fake band. (Open
-  question §7.)
+  measurement ranking that integrates over it, are *theater* if the half-width is treated
+  as calibrated when it is only a conservative display heuristic. *Mitigate:* label the
+  current bands as provenance-scaled confidence bands, not measured statistical
+  intervals; keep collision output `UNDECIDABLE` until calibrated band math exists; then
+  derive the band from measured-lobe validation, timing-anchor residuals, and angular
+  distance from supported points. (Open question §7.)
 - **The collision zero-point sits on unstamped geometry.** Deck clearance, valve
   protrusion, and pocket depth are *not* on the cam card and *not* in the codebase. If
   they're hardcoded, the gap line draws a crisp `MEASURED`-looking curve whose zero is
@@ -319,7 +335,7 @@ measurement that would change that.*
   *Mitigate:* ship only the redundant, conventional, print-safe encodings in §3.1.1;
   the exotic ones are parked in §7 / the design appendix, not the v1.
 - **Webapp scope creep.** "Maybe a webapp" can swallow the project. *Mitigate:* the
-  implemented slice is JSON projection plus one static valve-lift SVG; richer SVG
+  implemented slice is JSON projection plus one static SVAJ SVG; richer SVG
   exports and any webapp are gated on a real trigger (§7) and inherit the identical
   specs for free.
 
@@ -342,10 +358,10 @@ measurement that would change that.*
 
 ## 7. Open questions
 
-- **Band math.** What exactly is the defensible per-angle uncertainty of a 5-point
-  sine-power fit? Leave-one-out residual is the starting hypothesis; a spike should
-  validate it against a denser measured lobe before the collision view is allowed to
-  draw a band.
+- **Band math.** What exactly is the defensible per-angle uncertainty of a sparse
+  cam-card motion-law fit? The current p50/p95 bands are provenance-scaled heuristics.
+  A spike should validate them against a denser measured lobe before the collision view
+  is allowed to use them as calibrated uncertainty.
 - **Webapp trigger.** What concretely promotes this from static SVG to an interactive
   app — the comparison-overlay workflow, or the "go measure THIS" feedback loop (which
   is most compelling when measurements collapse the fog live)? The interactive ideas
