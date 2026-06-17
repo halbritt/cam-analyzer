@@ -20,7 +20,7 @@ an inferred lift value as if it were measured.
 | Layer (package) | Role |
 |---|---|
 | `cam_analyzer.sources` | **Producers.** Source-specific ingest: `CamCard` and its parsers (manual, CSV, PDF, OCR), measured-lift import, Cam Doctor, lobe coordinates. Each emits a `CamProfile`; nothing here is importable by analysis. |
-| `cam_analyzer.profile` | **The boundary.** The `CamProfile` port (the C5 query surface), the canonical lift model + named operator that backs it (Pillar B), the `Quantity` value type and provenance lattice (Pillar A), and the per-region `ProvenanceMap` (Pillar C). |
+| `cam_analyzer.profile` | **The boundary.** The `CamProfile` port (the C5 query surface), the canonical lift model + named operator that backs it (Pillar B), the `ProvFloat` stamped scalar and provenance lattice (Pillar A), and the per-region `ProvenanceMap` (Pillar C). |
 | `cam_analyzer.analysis` | **Consumers.** The eight analyses. Each imports only `cam_analyzer.profile` (+ stdlib/numpy). A consumer that needs a source-specific fact is a design bug, caught by a test. |
 | `cam_analyzer.conformance` | **The honesty harness (Pillar D).** A frozen adversary corpus of traps every profile must refuse, plus the C1 import guard. This is the durable asset that keeps the other three honest as the codebase grows. |
 
@@ -33,14 +33,16 @@ sources.** See [`tests/test_architecture_boundary.py`](tests/test_architecture_b
 Round 1 converged on these as *not competitors* but three facets of one design;
 adopt them together. Full rationale: [`docs/design/ROUND1_SYNTHESIS.md`](docs/design/ROUND1_SYNTHESIS.md).
 
-- **A · Typed provenance boundary** — `Quantity(magnitude, unit, frame, provenance)`.
+- **A · Typed provenance boundary** — `ProvFloat(value, unit, frame, provenance)`.
   `provenance` is an `IntEnum` lattice `MEASURED > INFERRED > EXTRAPOLATED` so
   `min()` *is* the join; arithmetic is defined only between matching `(unit, frame)`
-  and the result inherits the weakest input's stamp. Relabeling inferred→measured
-  is **unconstructable**. Angles are phantom-typed `Angle[Crank|Cam]`.
+  stamped values and the result inherits the weakest input's stamp. The
+  compatibility name `Quantity` aliases `ProvFloat`; the normal in-system path
+  has no `.magnitude` field to strip. Relabeling inferred→measured is
+  **unconstructable**. Angles are phantom-typed `Angle[Crank|Cam]`.
 - **B · Single canonical representation** — `CamProfile` is a `@final` facade over
   one immutable `CanonicalLiftModel` (normalized 720° samples + a *named* operator:
-  `HalfSineApproximation`, `CubicPeriodicSpline`, `MeasuredPeriodicSeries`). Every
+  `SinePowerCamCardApproximation`, `CubicPeriodicSpline`, `MeasuredPeriodicSeries`). Every
   query delegates to that one operator; derivatives differentiate it; reductions
   reduce it. Implementers supply only the canonical object — no method bodies — so
   inconsistent derivatives and sparse-as-continuous are unconstructable.
@@ -57,15 +59,17 @@ adopt them together. Full rationale: [`docs/design/ROUND1_SYNTHESIS.md`](docs/de
 ## The boundary contract (C5 surface)
 
 ```
-lift_at(Angle[Crank]) -> Quantity[Lift]          events_at_lift(Quantity[Lift]) -> [Angle[Crank], …]
-velocity_at(Angle[Crank]) -> Quantity[Velocity]  duration_at_lift(Quantity[Lift]) -> Angle[Crank]
-acceleration_at(...) -> Quantity[Accel]          max_lift() -> Quantity[Lift]
-jerk_at(...) -> Quantity[Jerk]                   area_under_curve() -> Quantity[Area]
+lift_at(Angle[Crank]) -> ProvFloat              events_at_lift(ProvFloat) -> [Angle[Crank], …]
+velocity_at(Angle[Crank]) -> Answer             duration_at_lift(ProvFloat) -> Angle[Crank]
+acceleration_at(...) -> Answer                  max_lift() -> ProvFloat
+jerk_at(...) -> Answer                          area_under_curve() -> ProvFloat
 ```
 
-Every return is a `Quantity` (or `Angle`) carrying unit, frame, and a *computed*
-provenance — never a bare `float`. *How* a profile is backed is open; *that*
-analyses speak only this language is fixed (C5).
+Every numeric answer is a `ProvFloat` carrying unit, frame, and a *computed*
+provenance, or a formal `Refusal` through the `Answer` alias where the query may
+not be justified. The only explicit escape to a bare scalar is `float(value)`.
+*How* a profile is backed is open; *that* analyses speak only this language is
+fixed (C5).
 
 ## Domain model (who owns what)
 
@@ -75,8 +79,9 @@ analyses speak only this language is fixed (C5).
 - **`Valvetrain`, `EngineGeometry`, `ValveGeometry`, `SpringPackage`** — the
   physical context an analysis needs *in addition to* a profile (geometry, masses,
   clearances). Source-agnostic value/aggregate types.
-- **`Quantity`, `Angle`, `Provenance`, `ProvenanceMap`** — value objects (Pillars
-  A/C). Immutable, equality-by-value, no setters.
+- **`ProvFloat`, `Angle`, `Provenance`, `ProvenanceMap`** — value objects
+  (Pillars A/C). Immutable, equality-by-value, no provenance setters. `Quantity`
+  is a compatibility alias for `ProvFloat` during the D012 transition.
 
 See [`docs/reference/ubiquitous-language.md`](docs/reference/ubiquitous-language.md)
 for the canonical definitions and [`docs/explanation/domain-driven-design.md`](docs/explanation/domain-driven-design.md)
@@ -98,8 +103,8 @@ Build order (each pick sits on the prior):
    where `np.asarray` silently drops a subclass.
 2. **Derivative-capability matrix + Nyquist gate** (D014) — `velocity/acceleration/
    jerk_at` answer only where sample density supports that order, else return a
-   structured `Refusal`. Closes Pillar B's "smooth half-sine emits authoritative jerk"
-   failure mode.
+   structured `Refusal`. Closes Pillar B's "smooth cam-card approximation emits
+   authoritative jerk" failure mode.
 3. **Bracketed verdict-agreement** (resolves honesty-under-discontinuity, D013) — run
    cliff analyses (PTV, spring float) on the earliest- and latest-plausible curves from
    the card's tolerances and publish only whether the *verdict* agrees; a flip emits

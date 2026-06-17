@@ -24,13 +24,46 @@ def _analysis_modules() -> list[Path]:
     return sorted(_ANALYSIS_DIR.rglob("*.py"))
 
 
-def _imported_modules(tree: ast.AST) -> set[str]:
+def _module_name(module_path: Path) -> str:
+    parts = list(module_path.relative_to(_REPO_ROOT / "src").with_suffix("").parts)
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def _package_name(module_path: Path) -> str:
+    module_name = _module_name(module_path)
+    if module_path.name == "__init__.py":
+        return module_name
+    return module_name.rsplit(".", 1)[0]
+
+
+def _resolve_import_from(node: ast.ImportFrom, module_path: Path) -> str | None:
+    if node.level == 0:
+        return node.module
+
+    package_parts = _package_name(module_path).split(".")
+    if node.level > len(package_parts):
+        return None
+    anchor_parts = package_parts[: len(package_parts) - node.level + 1]
+    module_parts = node.module.split(".") if node.module else []
+    return ".".join(anchor_parts + module_parts)
+
+
+def _imported_modules(tree: ast.AST, module_path: Path) -> set[str]:
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            names.add(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            module_name = _resolve_import_from(node, module_path)
+            if module_name:
+                names.add(module_name)
+                names.update(
+                    f"{module_name}.{alias.name}"
+                    for alias in node.names
+                    if alias.name != "*"
+                )
     return names
 
 
@@ -45,7 +78,7 @@ def test_analysis_never_imports_sources(module_path: Path) -> None:
     tree = ast.parse(module_path.read_text(), filename=str(module_path))
     offenders = {
         name
-        for name in _imported_modules(tree)
+        for name in _imported_modules(tree, module_path)
         if name == _FORBIDDEN_PREFIX or name.startswith(_FORBIDDEN_PREFIX + ".")
     }
     assert not offenders, (

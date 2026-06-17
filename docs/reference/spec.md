@@ -44,3 +44,20 @@ Output: a generated CamProfile          (NOT: cam card → DCR)
 
 The first durable output is a *profile*, not an analysis result (C2). DCR, PTV,
 and spring safety are downstream of, and source-blind to, that profile.
+
+## Cam-card approximation
+
+Milestone 1 fits the published card with `SinePowerCamCardOperator`, exposed
+through `profiles_from_cam_card()` and the compatibility factory
+`CamCardApproxProfile()`. A fixed `sin^2` half-sine cannot fit both advertised
+duration and duration at 0.050 in for the reference card, so the operator uses:
+
+```text
+lift = peak * sin(pi * t / advertised_duration) ** power
+```
+
+The exponent is solved so the generated curve crosses 0.050 in at the published
+0.050-duration events. This is still a cam-card approximation: generated values
+are inferred or extrapolated, never measured, and unsupported low-lift, nose, or
+higher-derivative queries must refuse or downgrade rather than fabricate
+precision.

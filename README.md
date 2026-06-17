@@ -69,7 +69,7 @@ Three layers, one direction of dependency (outer depends inward, never the rever
 sources/      cam_card, OCR, CSV, Cam Doctor, lobe coords  ──┐ produce
                                                              ▼
 profile/      CamProfile (port)  ◀── CanonicalLiftModel + named LiftOperator
-              quantity (Quantity·Unit·Frame·Provenance lattice)
+              quantity (ProvFloat·Unit·Frame·Provenance lattice)
               provenance_map (per-crank-region fitness)
                                                              ▲ consume only this
 analysis/     timing · overlap · DCR · PTV · spring · jerk · sensitivity · report ──┘
@@ -81,8 +81,9 @@ conformance discipline that keeps them honest — see
 [`ARCHITECTURE.md`](ARCHITECTURE.md):
 
 - **A · Typed boundary.** No bare `float` crosses the boundary; every value is a
-  `Quantity{magnitude, unit, frame, provenance}` and provenance is a *computed*
-  monotone lattice (`MEASURED > INFERRED > EXTRAPOLATED`) with no setter.
+  `ProvFloat(value, unit, frame, provenance)` and provenance is a *computed*
+  monotone lattice (`MEASURED > INFERRED > EXTRAPOLATED`) with no setter. The
+  transitional `Quantity` import is an alias, not the normal in-system model.
 - **B · One canonical representation.** A profile is a `@final` facade over one
   immutable `CanonicalLiftModel` + a named operator; the eight queries are
   *generated* projections (derivatives differentiate one operator), so
@@ -115,7 +116,7 @@ Build in this order — each pick answers one open question and sits on the prio
 2. **Derivative-capability matrix + Nyquist.** Before `velocity/acceleration/jerk_at`
    answers, check whether the data supports that derivative order: pass → a stamped
    value, fail → a structured `Refusal{requested_order, max_supported, reason, remedy}`.
-   A sparse half-sine cam-card backing therefore cannot emit authoritative jerk fiction.
+   A sparse cam-card approximation therefore cannot emit authoritative jerk fiction.
 3. **Bracketed verdict-agreement** (honesty-under-discontinuity). For cliff functions
    (PTV contact, spring float) build the earliest- and latest-plausible curves from the
    card's own tolerances, run the identical analysis on both, and publish only whether
@@ -131,10 +132,10 @@ unsafe*, distinct from whoever owns the lift curve — so when a verdict flips y
 profile emit the single cheapest measurement that would collapse it — turning "we don't
 know" into a ranked measurement work order.
 
-These are the latest design direction, not yet committed code. The decision log tracks
-them as the resolution of the two open questions ([D012/D013](docs/decisions/decision-log.md)),
-and `src/cam_analyzer/quantity.py` still implements the round-1 `Quantity` form pending
-the `ProvFloat` refinement.
+These are the latest design direction. The decision log tracks them as the
+resolution of the two open questions ([D012/D013](docs/decisions/decision-log.md)),
+and `src/cam_analyzer/quantity.py` now implements the D012 `ProvFloat` scalar.
+`Quantity` remains only as a compatibility alias while older call sites move over.
 
 ## Repository Layout
 
@@ -149,7 +150,7 @@ docs/
   explanation/             why it is this way — incl. domain-driven-design.md
   reference/               ubiquitous-language.md, spec pointer
   decisions/               the decision log (ADRs)
-  how-to/  tutorials/      task and learning docs (stubs)
+  how-to/  tutorials/      task and learning docs
   design/                  round-1 ideation provenance (problem brief, branches, synthesis)
   operator/                striatum run provenance (workflows, decisions)
 ```
@@ -157,15 +158,16 @@ docs/
 ## Quick Start
 
 ```bash
-# (skeleton) install in editable mode and run the boundary guard
+# install in editable mode and run the checks
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'
-pytest tests/test_architecture_boundary.py   # C1/C3 enforced by test, not vigilance
+pytest
 ```
 
-The implementation modules currently raise `NotImplementedError` with a docstring
-naming the invariant they must uphold. The boundary test and the package
-structure are real; the numerics are not yet written.
+Milestone 1 is implemented: the reference cam card can produce intake and exhaust
+`CamProfile` objects, run source-blind timing/overlap and approximate DCR, and
+return formal refusals or undecidable safety verdicts where cam-card evidence is
+insufficient.
 
 ## Documentation
 

@@ -13,7 +13,7 @@ for how these terms map onto aggregate roots and value objects.
 | **CamProfile** | The continuous valve-lift function over crank angle and its derivatives — the *only* language analyses speak. A `@final` facade over one `CanonicalLiftModel`. Not a "class with eight methods"; a sealed type whose queries are generated from one operator. |
 | **C5 surface** | The fixed eight-query vocabulary: `lift_at`, `velocity_at`, `acceleration_at`, `jerk_at`, `events_at_lift`, `duration_at_lift`, `max_lift`, `area_under_curve`. *That* analyses speak only this is fixed; *how* it is backed is open. |
 | **CanonicalLiftModel** | The single immutable object backing a profile: normalized 720° samples + exactly one named `LiftOperator`. The only thing a source implementer supplies. |
-| **LiftOperator** | The named operator a profile delegates to: `HalfSineApproximation`, `CubicPeriodicSpline`, `MeasuredPeriodicSeries`, … Derivatives = `operator.derivative(order=n)`; reductions sample/solve it. |
+| **LiftOperator** | The named operator a profile delegates to: `SinePowerCamCardApproximation`, `CubicPeriodicSpline`, `MeasuredPeriodicSeries`, … Derivatives = `operator.derivative(order=n)` where supported; reductions sample/solve it. |
 
 ## Sources (the producer layer)
 
@@ -21,14 +21,15 @@ for how these terms map onto aggregate roots and value objects.
 |---|---|
 | **CamCard** | The sparse *published* timing specs (peak lift, advertised duration, duration @0.050″, lobe centers, lash, open/close events). A source-layer record. **Never importable by analysis (C1).** |
 | **Source** | Anything that produces a `CamProfile`: cam card, measured dial-indicator/degree-wheel lift, Cam Doctor export, scanned lobe coordinates, valvetrain-dynamics model. A source emits a profile and is invisible past the boundary. |
-| **CamCardApproxProfile** | The Milestone-1 profile: a `CamProfile` backed by a crude `HalfSineCamCardOperator` synthesized from the four cam-card numbers. Explicitly throwaway scaffolding, not a deliverable. |
+| **CamCardApproxProfile** | Compatibility factory for the Milestone-1 cam-card ingest. It returns side-specific `CamProfile` objects backed by the fitted `SinePowerCamCardOperator`; `HalfSineCamCardOperator` is only a compatibility name for that operator, not a fixed `sin^2` model. |
 | **MeasuredValveLiftProfile / CamDoctorProfile / LobeCoordinateProfile** | Profiles backed by measured operators; they swap in for the approximation with **zero** analysis-code change (C4). |
 
 ## Values that cross the boundary
 
 | Term | Meaning |
 |---|---|
-| **Quantity** | The immutable value object every query returns: `{magnitude, unit, frame, provenance}`. No bare `float` crosses the boundary. Arithmetic is defined only between matching `(unit, frame)`; the result inherits the weakest input provenance. |
+| **ProvFloat** | The stamped scalar every numeric query returns: a `float` subclass with `unit`, `frame`, and `provenance`. No bare `float` crosses the boundary unless a caller explicitly writes `float(value)`. Arithmetic between matching stamped values inherits the weakest input provenance. |
+| **Quantity** | Transitional compatibility import alias for `ProvFloat`. It is not the normal in-system model and has no `.magnitude` field to strip. |
 | **Angle[Crank \| Cam]** | A phantom-typed angle. Crank vs cam is a *type* distinction, so a mix-up is a type error, not a silent 2× bug. |
 | **Provenance** | An `IntEnum` lattice: `MEASURED(2) > INFERRED(1) > EXTRAPOLATED(0)`. `min()` is the join. **No setter** — provenance is computed from inputs, never asserted. Distinguishes measured from inferred at every observable value (C3). |
 | **ProvenanceMap** | An interval map (crank region → provenance), `bisect` / O(log N). e.g. `[0,15]:MEASURED`, `[15,345]:EXTRAPOLATED`. The per-region fitness backbone. |

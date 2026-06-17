@@ -6,8 +6,8 @@ everyone has seen ten of those. They look at `CamProfile`, see a familiar
 `Protocol` with eight methods, and ask: *"what's load-bearing?"*
 
 If they conclude there isn't any, they will work *around* the boundary instead of
-*with* it: pull a bare `float` out of a `Quantity` with `.magnitude` and pass it
-on; reach into a `CamCard` from an analysis module "just this once"; hardcode a
+*with* it: explicitly cast a stamped value to a bare `float` and pass it on;
+reach into a `CamCard` from an analysis module "just this once"; hardcode a
 `confidence = "high"` field; let `velocity_at` be implemented independently from
 `lift_at`. Each one type-checks. The toolkit survives that for a while, and then a
 spring-float warning fires on an interpolation artifact, or a PTV "safe" verdict
@@ -17,7 +17,7 @@ trusted.
 The actual answer is that cam-analyzer is a **domain-driven design** of the
 data-source ↔ analysis boundary. The vocabulary in
 [`UBIQUITOUS_LANGUAGE.md`](../reference/ubiquitous-language.md) is the *model*.
-The `CamProfile` query surface is the model's interface boundary. The `Quantity`
+The `CamProfile` query surface is the model's interface boundary. The `ProvFloat`
 value type and the provenance lattice are the model's grammar. The invariants
 C1–C6 in the [problem brief](../design/PROBLEM_BRIEF.md) and the boundary
 decisions in [`decision-log.md`](../decisions/decision-log.md) are the *bounded
@@ -52,7 +52,7 @@ What cam-analyzer deliberately does **not** model:
   change (PTV/spring are cliff functions). Conflating the two is a modeling error.
 
 The boundary is visible in the package structure: a value crosses it only as a
-`Quantity`/`Angle`, and an analysis module can import only `cam_analyzer.profile`.
+`ProvFloat`/`Angle`, and an analysis module can import only `cam_analyzer.profile`.
 If a feature wants to live outside that boundary (a source-specific shortcut, a
 bare-float fast path), it does not get to call itself analysis.
 
@@ -89,9 +89,10 @@ at construction; once built, an aggregate is not mutated in flight.
 Immutable, equality-by-value, no identity, no setters. Constructed at
 validate-time and never mutated. "Changing" one means constructing a new one.
 
-- **`Quantity{magnitude, unit, frame, provenance}`** — the only thing that crosses
+- **`ProvFloat(value, unit, frame, provenance)`** — the stamped scalar that crosses
   the boundary. Arithmetic is defined only between matching `(unit, frame)`; the
-  result inherits the **weakest** input provenance (the lattice join).
+  result inherits the **weakest** input provenance (the lattice join). `Quantity`
+  remains only as a compatibility alias.
 - **`Provenance`** — `IntEnum` lattice `MEASURED(2) > INFERRED(1) > EXTRAPOLATED(0)`;
   `min()` is the join. **No setter** — a value's provenance is *computed* from its
   inputs, never asserted. "High confidence" must be *earned*, not declared.
@@ -121,11 +122,11 @@ honest as the codebase grows.
 ## The typed boundary as the write surface
 
 In DDD terms, the `CamProfile` query surface is the model's *application service*
-boundary, and the `Quantity` value type is its grammar:
+boundary, and the `ProvFloat` value type is its grammar:
 
 - An analysis obtains numbers **only** by calling the eight C5 queries; there is no
   other supported way to get a value out of a profile.
-- A profile returns values **only** as `Quantity`/`Angle`; there is no supported
+- A profile returns values **only** as `ProvFloat`/`Angle`; there is no supported
   way to hand analysis a bare `float`.
 - The provenance lattice means the *one* path that downgrades trust (interpolate,
   extrapolate, smooth, differentiate beyond Nyquist support) is the *automatic*
@@ -136,22 +137,19 @@ cam card" because the boundary doesn't expose it, and it cannot fake a measured
 value because provenance has no setter. The model is enforced by *what the types
 will let you say*.
 
-## The open edge (round 2)
+## The resolved round-2 edge
 
-Two modeling questions round 1 surfaced and did not close — they define round 2:
+Two modeling questions round 1 surfaced and round 2 resolved into the current
+build direction:
 
-1. **Ergonomics-as-integrity.** The grammar is only load-bearing if the honest path
-   is the *ergonomic* path. If carrying provenance is more verbose than dropping to
-   bare floats (`.magnitude`), it gets bypassed. Making the in-system path strictly
-   more convenient is an open design problem, not a solved one.
-2. **Honesty under discontinuity.** When the analysis verdict is a cliff function
-   of the profile, what does `CamProfile` owe the consumer? The model must say
-   something truthful about discontinuity rather than implying seamlessness.
+1. **Ergonomics-as-integrity.** The honest value is now the scalar: `ProvFloat`
+   carries provenance while behaving as the number for ordinary scalar math.
+2. **Honesty under discontinuity.** Safety-facing analyses return formal refusals
+   or `UNDECIDABLE FROM CAM CARD` when the profile cannot prove a verdict.
 
 ## What this isn't
 
 - A justification for adding more abstractions for their own sake.
-- A claim that the implementation exists — it is currently a skeleton.
 - An assertion that DDD is the only valid framing.
 
 It is the framing the model already has. This document writes it down so a reader
