@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from cam_analyzer.cli import main, render_report_from_card_data
+from cam_analyzer.cli import (
+    main,
+    render_chart_projection_from_card_data,
+    render_report_from_card_data,
+)
 
 _REFERENCE_CARD = {
     "title": "Test card",
@@ -56,6 +60,44 @@ def test_render_report_without_engine_omits_dynamic_compression() -> None:
     assert "## Timing" in report
 
 
+def test_render_chart_projection_from_card_data_contains_stamped_samples() -> None:
+    projection_json = render_chart_projection_from_card_data(
+        _REFERENCE_CARD,
+        approximate_derivatives=False,
+        chart_step_deg=20.0,
+    )
+    projection = json.loads(projection_json)
+
+    assert projection["schema"] == "cam_analyzer.visualization_projection.v1"
+    assert [profile["name"] for profile in projection["profiles"]] == ["intake", "exhaust"]
+    assert projection["implemented_subset"] == [
+        "static_json_projection",
+        "provenance_rendering_grammar",
+        "sampled_c5_series",
+        "refusal_segments",
+    ]
+    assert "svg_renderer" in projection["deferred"]
+    assert projection["provenance_legend"]["INFERRED"]["line"] == "short_dash"
+    assert projection["provenance_legend"]["EXTRAPOLATED"]["line"] == "long_dash"
+    assert projection["provenance_legend"]["REFUSED"]["draw_line"] is False
+
+    intake = projection["profiles"][0]
+    assert intake["summary"]["max_lift"]["provenance"] == "EXTRAPOLATED"
+    assert intake["events_at_lift"][0]["duration"]["degrees"] == pytest.approx(238.0)
+
+    intake_lift = intake["series"]["lift"]
+    assert intake_lift["query"] == "lift"
+    assert intake_lift["samples"][0]["answer"]["kind"] == "quantity"
+    assert intake_lift["samples"][0]["answer"]["unit"] == "inch"
+    assert "provenance" in intake_lift["samples"][0]["answer"]
+    assert {segment["provenance"] for segment in intake_lift["segments"]} >= {
+        "INFERRED",
+        "EXTRAPOLATED",
+    }
+    acceleration_samples = intake["series"]["acceleration"]["samples"]
+    assert all(sample["answer"]["kind"] == "refusal" for sample in acceleration_samples)
+
+
 def test_main_with_reference_flag_prints_report(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = main(["--reference"])
 
@@ -63,6 +105,26 @@ def test_main_with_reference_flag_prints_report(capsys: pytest.CaptureFixture[st
     assert exit_code == 0
     assert "WR250R reference" in captured.out
     assert "Dynamic compression ratio:" in captured.out
+
+
+def test_main_with_reference_flag_can_print_chart_projection(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(["--reference", "--charts", "json", "--chart-step-deg", "360"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    projection = json.loads(captured.out)
+    assert projection["schema"] == "cam_analyzer.visualization_projection.v1"
+    assert "Dynamic compression ratio:" not in captured.out
+
+
+def test_main_charts_json_rejects_non_positive_step(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(["--reference", "--charts", "json", "--chart-step-deg", "0"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "--chart-step-deg must be positive" in captured.err
 
 
 def test_main_with_card_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

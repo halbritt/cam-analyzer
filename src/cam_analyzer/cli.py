@@ -1,10 +1,10 @@
-"""``cam-analyze`` — one command from a cam-card file to a Markdown report.
+"""``cam-analyze`` — one command from a cam-card file to a report/projection.
 
 Stays dependency-free: a cam card is a small JSON file (or use ``--reference`` for
 the built-in Web Cam 81-651 WR250R card). The CLI only wires source → profile →
-report; every honesty guarantee lives in the layers it calls. Where the card's
-evidence can't justify a number, the report says so (refusals / UNDECIDABLE),
-exactly as the library does.
+report/projection; every honesty guarantee lives in the layers it calls. Where
+the card's evidence can't justify a number, the report says so (refusals /
+UNDECIDABLE), exactly as the library does.
 
 Card JSON shape (durations in crank degrees, lifts in inches)::
 
@@ -33,6 +33,11 @@ from cam_analyzer.analysis.piston_to_valve import (
     PistonToValveInput,
     default_exhaust_policy,
     default_intake_policy,
+)
+from cam_analyzer.analysis.projection import (
+    ProfileProjectionInput,
+    project_cam_profiles,
+    projection_to_json,
 )
 from cam_analyzer.analysis.reporting import render_markdown_report
 from cam_analyzer.analysis.spring_safety import SpringSafetyInput, default_spring_policy
@@ -114,6 +119,42 @@ def render_report_from_card_data(data: Any, *, approximate_derivatives: bool) ->
     )
 
 
+def render_chart_projection_from_card_data(
+    data: Any,
+    *,
+    approximate_derivatives: bool,
+    chart_step_deg: float = 5.0,
+) -> str:
+    """Build profiles from parsed card data and render the RFC-0004 JSON projection."""
+
+    card = _card_from_mapping(data)
+    profiles = profiles_from_cam_card(card, approximate_derivatives=approximate_derivatives)
+    timing_lifts = tuple(inferred(value, Inch, "valve_side") for value in _timing_lifts_in(data))
+    projection = project_cam_profiles(
+        (
+            ProfileProjectionInput("intake", profiles.intake),
+            ProfileProjectionInput("exhaust", profiles.exhaust),
+        ),
+        sample_degrees=_chart_sample_degrees(chart_step_deg),
+        event_lifts=timing_lifts,
+    )
+    projection["implemented_subset"] = (
+        "static_json_projection",
+        "provenance_rendering_grammar",
+        "sampled_c5_series",
+        "refusal_segments",
+    )
+    projection["deferred"] = (
+        "svg_renderer",
+        "echarts_ssr_adapter",
+        "interactive_webapp",
+        "uncertainty_bands",
+        "piston_to_valve_collision_view",
+        "go_measure_this_overlay",
+    )
+    return projection_to_json(projection) + "\n"
+
+
 def _load_card_data(args: argparse.Namespace) -> Any:
     if args.reference:
         card = CamCard.wr250r_reference()
@@ -142,10 +183,26 @@ def _lobe_to_mapping(lobe: CamLobeSpec) -> dict[str, float]:
     }
 
 
+def _chart_sample_degrees(step_deg: float) -> tuple[float, ...]:
+    if step_deg <= 0.0:
+        raise ValueError("--chart-step-deg must be positive")
+    degrees: list[float] = []
+    current = 0.0
+    while current < 720.0:
+        degrees.append(round(current, 9))
+        current += step_deg
+    if not degrees or degrees[-1] != 720.0:
+        degrees.append(720.0)
+    return tuple(degrees)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cam-analyze",
-        description="Turn a cam-card JSON file into a source-blind Markdown analysis report.",
+        description=(
+            "Turn a cam-card JSON file into a source-blind Markdown report "
+            "or RFC-0004 chart JSON projection."
+        ),
     )
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("card", nargs="?", help="path to a cam-card JSON file")
@@ -159,6 +216,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="answer otherwise-refused higher derivatives with an EXTRAPOLATED ballpark",
     )
+    parser.add_argument(
+        "--charts",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="output the default Markdown report or the RFC-0004 chart JSON projection",
+    )
+    parser.add_argument(
+        "--chart-step-deg",
+        type=float,
+        default=5.0,
+        help="crank-degree sample step for --charts json",
+    )
     return parser
 
 
@@ -167,14 +236,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         data = _load_card_data(args)
-        report = render_report_from_card_data(data, approximate_derivatives=args.approximate)
+        if args.charts == "json":
+            output = render_chart_projection_from_card_data(
+                data,
+                approximate_derivatives=args.approximate,
+                chart_step_deg=args.chart_step_deg,
+            )
+        else:
+            output = render_report_from_card_data(data, approximate_derivatives=args.approximate)
     except FileNotFoundError as exc:
         print(f"cam-analyze: card file not found: {exc.filename}", file=sys.stderr)
         return 2
     except (ValueError, json.JSONDecodeError) as exc:
         print(f"cam-analyze: invalid cam card: {exc}", file=sys.stderr)
         return 2
-    print(report, end="")
+    print(output, end="")
     return 0
 
 

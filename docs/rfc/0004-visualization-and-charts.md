@@ -1,9 +1,12 @@
 # RFC 0004 — Visualization & chart suite (honest-by-construction)
 
-- **Status:** Proposed (pre-decision). **Build status:** `DESIGNED` — nothing in
-  this RFC exists in `src` yet. Today the only output is the Markdown report from
-  `render_markdown_report` (`src/cam_analyzer/analysis/reporting.py`); there is no
-  charting code, no SVG, no JSON export, and no web layer.
+- **Status:** Accepted for the implemented projection/grammar slice. **Build status:** `VERIFIED` partial —
+  `cam-analyze --charts json` now emits the static, renderer-neutral projection
+  and provenance/refusal grammar metadata. The default output remains the Markdown
+  report from `render_markdown_report`
+  (`src/cam_analyzer/analysis/reporting.py`). SVG rendering, an ECharts adapter,
+  uncertainty bands, the collision view, the measurement-plan overlay, and any web
+  layer remain `DESIGNED` / deferred.
 - **Date:** 2026-06-17
 - **Motivating ask:** "make me some pretty charts like other cam and combustion
   analysis software… maybe it becomes a webapp at some point. Use the reference cam,
@@ -44,9 +47,10 @@ On top of the grammar sit two tiers of charts:
   **"go measure THIS" overlay** (the tool ranks the single measurement that would
   collapse an `UNDECIDABLE` verdict into `PASS`/`FAIL`).
 
-Rendering is **ECharts server-side SVG today, the identical spec interactive in a
-browser tomorrow** (§3.3) — one codebase spans the CLI-now / webapp-later path the
-ask leaves open.
+The implemented slice is **static JSON projection today** (§3.3): sampled C5
+answers, refusals, segmented series, and a provenance legend that a renderer may
+consume but may not upgrade. ECharts server-side SVG and the identical spec in a
+future browser remain the intended rendering path, not built output.
 
 On the reference cam (Web Cam 81-651, a sine-power fit to 5 numbers), the honest
 result is blunt and is the whole point: most of every curve renders dashed, the
@@ -85,9 +89,9 @@ is therefore not a styling note; it is the acceptance criterion.
   Drawing a combustion chart we can't populate would itself violate refuse-to-draw.
 - **Replacing the clay check.** Per RFC 0003, the collision view is an `INFERRED`
   screen that tells you whether/where to clay — never a `MEASURED` go-ahead.
-- **A full webapp.** This RFC builds the *rendering core* and static SVG output, and
-  guarantees the spec is webapp-portable. The interactive app is gated behind a real
-  trigger (§7), not built speculatively.
+- **A full webapp.** The implemented slice builds only the static JSON projection
+  and grammar metadata. Static SVG and the interactive app remain gated behind real
+  triggers (§7), not built speculatively.
 - **New physics.** Charts project existing quantities. Where a chart needs a number
   the tool doesn't have (e.g. deck geometry for the collision zero-point), that gap
   is RFC 0003's, and the chart must refuse rather than invent it.
@@ -207,30 +211,28 @@ dependency; see the risk in §5 and the band-math open question in §7.
 
 ### 3.3 Rendering pipeline & tech stack
 
-- **Library: Apache ECharts.** Since v5.3.0 it renders **zero-dependency server-side
-  SVG strings** — no headless browser, no jsdom — via
+- **Library target: Apache ECharts (`DESIGNED`, not built).** Since v5.3.0 it
+  renders **zero-dependency server-side SVG strings** — no headless browser, no jsdom — via
   `echarts.init(null, null, {renderer:'svg', ssr:true, width, height})` →
   `chart.renderToSVGString()` (with `animation:false`). The *same* `setOption` spec
   runs interactively in a browser. This is the cleanest "static SVG now, interactive
   webapp later, one codebase" story of the candidates. **Vega-Lite** (declarative
   specs + `vl-convert`/`vl2svg`) is the documented fallback if a spec-driven approach
   is later preferred; the `StyledSegment` IR keeps us backend-portable either way.
-- **A small TS/Node renderer package** consumes a JSON projection of the profile.
-  Which means a prerequisite: the Python core must grow a **`--json` export** of
-  quantities + provenance map (it has none today). The boundary is clean — Python
-  computes and stamps; the renderer only draws what it's given and may not upgrade a
-  provenance.
-- **CLI surface:** `cam-analyze <card.json> --charts svg --out dir/` emits one SVG per
-  chart; `--charts json` emits the projection for downstream/web use. Default stays the
-  Markdown report (no behavior change unless a chart flag is passed).
+- **A small TS/Node renderer package (`DESIGNED`, not built)** will consume the JSON
+  projection. The boundary is clean — Python computes and stamps; the renderer only
+  draws what it is given and may not upgrade provenance.
+- **CLI surface:** `cam-analyze <card.json> --charts json` is implemented and emits
+  the projection for downstream/web use. `cam-analyze <card.json> --charts svg --out
+  dir/` remains `DESIGNED`, not a supported flag. Default stays the Markdown report
+  (no behavior change unless a chart flag is passed).
 
 ### 3.4 Seam in current code
 
-`reporting.py` gains a sibling `projection.py` that serializes the already-computed
-`CamProfile` quantities + `ProvenanceMap` to the JSON contract. No analysis code
-changes. The renderer lives outside `src/cam_analyzer` (a `viz/` TS package) so the
-Python import-linter boundaries are untouched, and a chart can never reach *into* the
-domain to recompute — it only consumes the projection.
+`analysis/projection.py` serializes already-computed `CamProfile` boundary answers
+to the JSON contract, and `cli.py` exposes it through `--charts json`. The projection
+samples C5 queries only; analysis still does not import `sources`, and a chart can
+never reach *into* a source to recompute or upgrade provenance.
 
 ### 3.5 Worked example — the reference cam (Web Cam 81-651, 13.5:1 build)
 
@@ -255,18 +257,21 @@ measurement that would change that.*
 
 ## 4. Enforcement plan (mechanism, not review)
 
-> Build-status legend: **[DESIGNED]** = planned, not built. Nothing here is built.
+> Build-status legend: **[VERIFIED]** = passing executable witness exists;
+> **[DESIGNED]** = planned, not built.
 
-- **[DESIGNED]** *Clean partition:* `split_series` over the reference map tiles the
-  X-domain gaplessly, each segment's tag equals `prov_map.at(midpoint)`, and the
-  segment count is bounded (the anti-confetti guard, §5).
-- **[DESIGNED]** *Ceiling from data:* the accel/jerk caption text and opacity are
-  computed from `derivative_map(order).weakest()`, never literals — including the
-  saturation case where lift is already `EXTRAPOLATED` and velocity cannot step lower.
-- **[DESIGNED]** *Refuse-to-draw needs a real signal:* an `UNDECIDABLE`/None sample
-  (or band-over-threshold) produces the hatch band, asserted to *not* interpolate.
+- **[VERIFIED]** *Static JSON export:* `cam-analyze --charts json` emits schema
+  `cam_analyzer.visualization_projection.v1` with sampled lift/velocity/acceleration/
+  jerk answers and timing-event projections. Witness:
+  `tests/test_cli.py::test_render_chart_projection_from_card_data_contains_stamped_samples`.
+- **[VERIFIED]** *Shared provenance/refusal grammar metadata:* the JSON projection
+  includes the solid/short-dash/long-dash/no-line style legend and segments refused
+  derivative answers as no-line samples. Witness:
+  `tests/test_cli.py::test_render_chart_projection_from_card_data_contains_stamped_samples`.
+- **[VERIFIED]** *Default behavior unchanged:* `cam-analyze --reference` still renders
+  the committed Markdown report. Witness: `tests/test_reference_report_golden.py`.
 - **[DESIGNED]** *Crop survival:* render → crop to the plot area → assert the
-  cam-card hash and legend still appear (ledger is structural, not optional).
+  cam-card hash and legend still appear. There is no SVG template or pixel ledger yet.
 - **[DESIGNED]** *Cross-backend identity:* the ECharts and Vega adapters produce the
   same provenance encoding from one `StyledSegment` list (golden SVG).
 - **[DESIGNED]** *The honesty regression that matters most:* on the real 81-651 fit,
@@ -301,9 +306,9 @@ measurement that would change that.*
   uncertainty, "ink budget," sonification) that risk looking like rendering bugs.
   *Mitigate:* ship only the redundant, conventional, print-safe encodings in §3.1.1;
   the exotic ones are parked in §7 / the design appendix, not the v1.
-- **Webapp scope creep.** "Maybe a webapp" can swallow the project. *Mitigate:* v1 is
-  static SVG + the JSON projection only; the webapp is gated on a real trigger (§7) and
-  inherits the identical specs for free.
+- **Webapp scope creep.** "Maybe a webapp" can swallow the project. *Mitigate:* the
+  implemented slice is JSON projection only; static SVG and any webapp are gated on a
+  real trigger (§7) and inherit the identical specs for free.
 
 ## 6. Alternatives considered
 

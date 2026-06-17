@@ -18,11 +18,11 @@ how-to (task), tutorials (learning).
 ## Decisions (the boundary, and why)
 - [`decisions/decision-log.md`](decisions/decision-log.md) — the architecture decision record (ADR table).
 
-## RFCs (proposed designs, pre-decision)
+## RFCs (design records and proposed designs)
 - [`rfc/0001-honest-typed-boundary.md`](rfc/0001-honest-typed-boundary.md) — make C3/C6 mechanism-not-convention: sealed mints + phantom-typed units/frames + ergonomic inversion (resolves the round-2 "ergonomics-as-integrity" problem; addresses #5/#6/#8).
 - [`rfc/0002-static-cr-chamber-volume-solver.md`](rfc/0002-static-cr-chamber-volume-solver.md) — compute static CR from measured chamber volumes and invert it to "dome cc to remove"; gives the DCR's CR input real provenance (addresses #17).
 - [`rfc/0003-piston-to-valve-clearance-model.md`](rfc/0003-piston-to-valve-clearance-model.md) — a static-kinematic P2V model that turns UNDECIDABLE into an INFERRED screening estimate + relief-cut depth, without ever replacing the clay check.
-- [`rfc/0004-visualization-and-charts.md`](rfc/0004-visualization-and-charts.md) — an honest-by-construction chart suite: a Provenance Rendering Grammar (solid/dashed/refuse-to-draw, derivative ceiling, uncroppable ledger) under the industry parity charts (SVAJ stack, 720° lift overlay, polar clock, cam card) plus two differentiators (the P2V collision view and the "go measure THIS" plan); ECharts SSR SVG now, webapp-portable later.
+- [`rfc/0004-visualization-and-charts.md`](rfc/0004-visualization-and-charts.md) — an honest-by-construction chart suite: the static JSON projection and provenance/refusal grammar are implemented via `cam-analyze --charts json`; SVG/ECharts, webapp, uncertainty bands, the P2V collision view, and the "go measure THIS" plan remain designed/deferred.
 
 ## How-to (tasks) — stubs
 - [`how-to/add-a-new-source.md`](how-to/add-a-new-source.md) — wire a new data source behind CamProfile without touching analysis.
