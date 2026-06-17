@@ -88,6 +88,7 @@ Unit: TypeAlias = str  # runtime unit string (kept for messages / back-compat)
 Frame: TypeAlias = str
 
 _MINT: Final = object()  # module-private mint token; never exported
+_SPENT: Final = object()  # what a minted value stores instead, so it can't be re-minted
 
 
 @dataclass(frozen=True, repr=False)
@@ -112,11 +113,21 @@ class Quantity(Generic[U]):
                 "Quantity is sealed; mint via measured()/inferred()/extrapolated() "
                 "or an arithmetic combinator, never by direct construction"
             )
+        # Spend the token so a minted value cannot be re-minted by carrying its
+        # stored token back through dataclasses.replace()/copy/pickle — which would
+        # otherwise let `replace(q, provenance=MEASURED)` raise a value's provenance.
+        object.__setattr__(self, "_token", _SPENT)
 
     @classmethod
     def _mint(cls, value: float, unit: str, frame: str, provenance: Provenance) -> "Quantity[Any]":
         """The single keyed construction point (projection / combinator mint)."""
         return cls(value, unit, frame, provenance, _MINT)
+
+    def __reduce__(self) -> tuple[Any, tuple[float, str, str, Provenance]]:
+        # Route pickle/copy back through the keyed mint instead of re-running
+        # __init__ with the spent token (which would raise). Provenance is
+        # preserved, never conferred — this is not a way to fabricate MEASURED.
+        return (_unpickle_quantity, (self._value, self.unit, self.frame, self.provenance))
 
     # ---- the one grep-able exit ----
     def __float__(self) -> float:
@@ -207,6 +218,13 @@ def inferred(magnitude: float, unit: type[U], frame: str) -> Quantity[U]:
 def extrapolated(magnitude: float, unit: type[U], frame: str) -> Quantity[U]:
     """Confer ``EXTRAPOLATED`` — the weakest stamp, a model-shaped ballpark."""
     return Quantity._mint(magnitude, unit.symbol, frame, Provenance.EXTRAPOLATED)
+
+
+def _unpickle_quantity(
+    value: float, unit: str, frame: str, provenance: Provenance
+) -> "Quantity[Any]":
+    """Reconstruct a Quantity from pickle/copy via the keyed mint (see __reduce__)."""
+    return Quantity._mint(value, unit, frame, provenance)
 
 
 # Back-compat: ``ProvFloat`` was the float-subclass value name. It is now an

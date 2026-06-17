@@ -18,7 +18,7 @@ import pytest
 
 import cam_analyzer.quantity as quantity_module
 from cam_analyzer.conformance import CORPUS
-from cam_analyzer.quantity import Angle, Provenance, Quantity, extrapolated, inferred, measured
+from cam_analyzer.quantity import Angle, Inch, Provenance, Quantity, extrapolated, inferred, measured
 
 _EXECUTABLE_TRAPS = {
     "advertised_lt_050",
@@ -199,6 +199,28 @@ def test_quantity_unsealed_construction_is_rejected() -> None:
         Quantity(0.360, "inch", "valve_side", Provenance.MEASURED)  # type: ignore[call-arg]
     with pytest.raises(TypeError):
         Quantity(0.360, "inch", "valve_side", Provenance.MEASURED, object())
+
+
+def test_dataclasses_replace_cannot_raise_a_values_provenance() -> None:
+    # The seal survives dataclasses.replace(): a minted value's token is spent, so
+    # carrying it back through replace cannot re-mint the value with a stronger stamp.
+    import dataclasses
+
+    value = inferred(0.050, Inch, "valve_side")
+    with pytest.raises(TypeError):
+        dataclasses.replace(value, provenance=Provenance.MEASURED)
+
+
+def test_quantity_pickle_and_copy_roundtrip_through_the_keyed_mint() -> None:
+    # __reduce__ routes pickle/copy through the keyed mint (not the spent-token
+    # __init__), preserving — never conferring — provenance.
+    import copy
+    import pickle
+
+    value = measured(0.060, Inch, "valve_side")
+    assert pickle.loads(pickle.dumps(value)) == value
+    restored = copy.deepcopy(value)
+    assert restored == value and restored.provenance is Provenance.MEASURED
 
 
 def test_no_public_value_factory_confers_provenance_by_argument() -> None:
