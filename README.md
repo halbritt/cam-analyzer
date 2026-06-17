@@ -57,9 +57,15 @@ and the brief in [`docs/design/PROBLEM_BRIEF.md`](docs/design/PROBLEM_BRIEF.md))
 - **C5 — Stable consumer vocabulary.** The eight queries above are fixed; how they are backed is open.
 - **C6 — Unambiguous frames & units.** Crank vs cam degrees, valve- vs cam-side lift, seat vs 0.050″, inch vs mm — explicit and non-guessable at the boundary.
 
-C1 and C3 are not enforced by reviewer vigilance — they are enforced by a test
-(see [`tests/test_architecture_boundary.py`](tests/test_architecture_boundary.py)
-and the conformance corpus). That is the design's central bet.
+C1, C3, and C6 are not enforced by reviewer vigilance — they are enforced by
+tests and the type checker. C1 by an import guard
+([`tests/test_architecture_boundary.py`](tests/test_architecture_boundary.py));
+C3 by sealed construction (a `Quantity` can't be built without the module-private
+mint token, and no public callable accepts a `provenance=` argument); C6 by
+phantom-typed units and frames (`mm(5) + inch(1)` and passing a cam angle where a
+crank angle is required are `mypy --strict` errors). The executable
+[conformance corpus](src/cam_analyzer/conformance/__init__.py) ties these to CI.
+That is the design's central bet. (C2/C4/C5 remain conventions, not tests.)
 
 ## Architecture
 
@@ -81,9 +87,12 @@ conformance discipline that keeps them honest — see
 [`ARCHITECTURE.md`](ARCHITECTURE.md):
 
 - **A · Typed boundary.** No bare `float` crosses the boundary; every value is a
-  `ProvFloat(value, unit, frame, provenance)` and provenance is a *computed*
-  monotone lattice (`MEASURED > INFERRED > EXTRAPOLATED`) with no setter. The
-  transitional `Quantity` import is an alias, not the normal in-system model.
+  sealed `Quantity[Unit]` carrying unit, frame, and a provenance that is a
+  *computed* monotone lattice (`MEASURED > INFERRED > EXTRAPOLATED`) with no
+  setter. Construction is sealed (RFC 0001): provenance is *conferred* by
+  acquisition factories (`measured`/`inferred`/`extrapolated`), never passed as an
+  argument, and combinators only ever min-join it down. `ProvFloat` is now a
+  back-compat annotation alias for `Quantity`.
 - **B · One canonical representation.** A profile is a `@final` facade over one
   immutable `CanonicalLiftModel` + a named operator; the eight queries are
   *generated* projections (derivatives differentiate one operator), so
@@ -91,8 +100,11 @@ conformance discipline that keeps them honest — see
 - **C · Per-region fitness.** Provenance is per query / per crank region / per
   derivative order; safety consumers must pattern-match ignorance, so a
   fabricated seat-ramp value cannot be laundered into a "safe" verdict.
-- **D · Conformance by adversary corpus.** The durable asset is the frozen suite
-  of traps a profile must refuse; it turns C1/C3/C4 into tests.
+- **D · Conformance by adversary corpus.** The durable asset is the suite of
+  traps a profile must refuse or be unable to construct. Many are now executable
+  (C1 import guard; C3 sealed-mint / no-`provenance=` / MEASURED-confined-to-source
+  traps; C6 cross-unit and cam-as-crank `mypy` traps); the rest stay declared
+  until their machinery lands.
 
 ## Round 2 — the chosen build plan
 
@@ -106,13 +118,18 @@ sharpens the design into one rule and a build order:
 
 Build in this order — each pick answers one open question and sits on the prior:
 
-1. **`ProvFloat` — the honest value *is* the convenient value** (ergonomics-as-integrity).
-   Every query returns a `float` *subclass* carrying one `Provenance` stamp. There is no
-   `.magnitude` field to strip; arithmetic propagates the lattice-`min` stamp; the sole
-   exit is `float(x)` — ugly, grep-able, lint-flagged. This *refines* Pillar A: the
-   round-1 `Quantity` wrapper becomes a stamped scalar, so the lie can never be cheaper
-   than the truth. Mandatory follow-on: `ProvArray` for NumPy, where `np.asarray`
-   silently drops a subclass.
+1. **The honest value *is* the convenient value** (ergonomics-as-integrity).
+   Every query returns a stamped scalar carrying one `Provenance`. There is no
+   `.magnitude` field to strip; arithmetic propagates the lattice-`min` stamp; the
+   sole exit is `float(x)` — grep-able. This *refines* Pillar A so the lie can never
+   be cheaper than the truth.
+   > ▸ **Revised by [RFC 0001](docs/rfc/0001-honest-typed-boundary.md).** Round 2
+   > proposed a `float` *subclass*, but a `mypy --strict` spike (RFC §9) proved a
+   > float subclass **cannot** make `mm + inch` a type error (it is-a `float`, so the
+   > unit erases). The value is therefore a sealed, phantom-typed **`Quantity[Unit]`**
+   > value object, not a float subclass — same ergonomics for the legal cases
+   > (`float(x)`, scaling, same-unit arithmetic), but cross-unit math is now a type
+   > error. NumPy interop (`ProvArray`) remains a follow-on.
 2. **Derivative-capability matrix + Nyquist.** Before `velocity/acceleration/jerk_at`
    answers, check whether the data supports that derivative order: pass → a stamped
    value, fail → a structured `Refusal{requested_order, max_supported, reason, remedy}`.
@@ -132,10 +149,12 @@ unsafe*, distinct from whoever owns the lift curve — so when a verdict flips y
 profile emit the single cheapest measurement that would collapse it — turning "we don't
 know" into a ranked measurement work order.
 
-These are the latest design direction. The decision log tracks them as the
-resolution of the two open questions ([D012/D013](docs/decisions/decision-log.md)),
-and `src/cam_analyzer/quantity.py` now implements the D012 `ProvFloat` scalar.
-`Quantity` remains only as a compatibility alias while older call sites move over.
+The decision log tracks them as the resolution of the two open questions
+([D012/D013](docs/decisions/decision-log.md)). Their typed-boundary facet was then
+sharpened by [RFC 0001](docs/rfc/0001-honest-typed-boundary.md):
+`src/cam_analyzer/quantity.py` now implements a **sealed, phantom-typed
+`Quantity[Unit]`** value object (provenance conferred, not declared; units/frames
+in the type). `ProvFloat` remains as a back-compat annotation alias.
 
 ## Repository Layout
 
