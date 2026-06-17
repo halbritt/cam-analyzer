@@ -199,6 +199,9 @@ cam-analyze --reference --charts json
 cam-analyze --reference --charts svg > reference-lift.svg
 ```
 
+A committed example of that SVG output lives at
+[`examples/wr250r-webcam-81651-reference-valve-lift.svg`](examples/wr250r-webcam-81651-reference-valve-lift.svg).
+
 Milestone 1 is implemented: the reference cam card can produce intake and exhaust
 `CamProfile` objects, run source-blind timing/overlap and approximate DCR, and
 return formal refusals or undecidable (single-curve) safety verdicts where
