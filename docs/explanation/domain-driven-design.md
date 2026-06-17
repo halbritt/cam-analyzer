@@ -17,8 +17,9 @@ trusted.
 The actual answer is that cam-analyzer is a **domain-driven design** of the
 data-source ↔ analysis boundary. The vocabulary in
 [`UBIQUITOUS_LANGUAGE.md`](../reference/ubiquitous-language.md) is the *model*.
-The `CamProfile` query surface is the model's interface boundary. The `ProvFloat`
-value type and the provenance lattice are the model's grammar. The invariants
+The `CamProfile` query surface is the model's interface boundary. The sealed
+`Quantity[Unit]` value type (`ProvFloat` is now a back-compat alias for it) and
+the provenance lattice are the model's grammar. The invariants
 C1–C6 in the [problem brief](../design/PROBLEM_BRIEF.md) and the boundary
 decisions in [`decision-log.md`](../decisions/decision-log.md) are the *bounded
 context*.
@@ -52,7 +53,8 @@ What cam-analyzer deliberately does **not** model:
   change (PTV/spring are cliff functions). Conflating the two is a modeling error.
 
 The boundary is visible in the package structure: a value crosses it only as a
-`ProvFloat`/`Angle`, and an analysis module can import only `cam_analyzer.profile`.
+`Quantity[Unit]`/`Angle` (the `ProvFloat` alias), and an analysis module can
+import only `cam_analyzer.profile`.
 If a feature wants to live outside that boundary (a source-specific shortcut, a
 bare-float fast path), it does not get to call itself analysis.
 
@@ -80,7 +82,7 @@ at construction; once built, an aggregate is not mutated in flight.
 | Aggregate | Identity | Invariants the model enforces |
 |---|---|---|
 | `CamCard` | (engine, cam part no.) | sparse published specs only; lives in `sources`; never importable by `analysis`; `advertised_duration ≥ duration@0.050″` |
-| `CamProfile` | the backing `CanonicalLiftModel` | `@final` facade; periodic over 720°; every query delegates to **one** named operator; derivatives are *generated*, never hand-supplied (so they cannot disagree) |
+| `CamProfile` | the backing `CanonicalLiftModel` | `@final` facade; periodic over 720°; every query delegates to **one** named operator. *Derivative consistency is operator-TRUSTED, not constructed:* an operator hand-writes `evaluate` and `derivative` as independent methods (`sources/cam_card.py:138`, `:149`), and the architecture trusts the author to keep them consistent — it does not differentiate one to check the other. (ASSERTED — see [`adr-derivatives-operator-trusted.md`](../decisions/adr-derivatives-operator-trusted.md).) |
 | `CanonicalLiftModel` | (samples, operator name) | immutable; normalized 720° samples + exactly one named `LiftOperator`; the only thing an implementer supplies |
 | `EngineGeometry` / `ValveGeometry` / `SpringPackage` / `Valvetrain` | part identity | source-agnostic physical context; explicit units/frames; no implicit inch/mm or crank/cam |
 
@@ -89,10 +91,14 @@ at construction; once built, an aggregate is not mutated in flight.
 Immutable, equality-by-value, no identity, no setters. Constructed at
 validate-time and never mutated. "Changing" one means constructing a new one.
 
-- **`ProvFloat(value, unit, frame, provenance)`** — the stamped scalar that crosses
-  the boundary. Arithmetic is defined only between matching `(unit, frame)`; the
-  result inherits the **weakest** input provenance (the lattice join). `Quantity`
-  remains only as a compatibility alias.
+- **`Quantity[Unit]`** — the sealed, phantom-typed stamped scalar that crosses the
+  boundary (carrying unit, frame, and provenance). Construction is sealed: a value
+  is *minted* by an acquisition factory (`measured`/`inferred`/`extrapolated`),
+  never built with a `provenance=` argument. Arithmetic is defined only between
+  matching `(unit, frame)`; the result inherits the **weakest** input provenance
+  (the lattice join). It is **not** a `float` subclass — RFC 0001 §9 proved a float
+  subclass cannot make `mm + inch` a type error. `ProvFloat` is now a back-compat
+  alias (`ProvFloat = Quantity[Any]`), not the model.
 - **`Provenance`** — `IntEnum` lattice `MEASURED(2) > INFERRED(1) > EXTRAPOLATED(0)`;
   `min()` is the join. **No setter** — a value's provenance is *computed* from its
   inputs, never asserted. "High confidence" must be *earned*, not declared.
@@ -122,12 +128,12 @@ honest as the codebase grows.
 ## The typed boundary as the write surface
 
 In DDD terms, the `CamProfile` query surface is the model's *application service*
-boundary, and the `ProvFloat` value type is its grammar:
+boundary, and the sealed `Quantity[Unit]` value type is its grammar:
 
 - An analysis obtains numbers **only** by calling the eight C5 queries; there is no
   other supported way to get a value out of a profile.
-- A profile returns values **only** as `ProvFloat`/`Angle`; there is no supported
-  way to hand analysis a bare `float`.
+- A profile returns values **only** as `Quantity[Unit]`/`Angle` (the `ProvFloat`
+  alias); there is no supported way to hand analysis a bare `float`.
 - The provenance lattice means the *one* path that downgrades trust (interpolate,
   extrapolate, smooth, differentiate beyond Nyquist support) is the *automatic*
   path; you cannot opt out by relabeling.
@@ -142,10 +148,15 @@ will let you say*.
 Two modeling questions round 1 surfaced and round 2 resolved into the current
 build direction:
 
-1. **Ergonomics-as-integrity.** The honest value is now the scalar: `ProvFloat`
-   carries provenance while behaving as the number for ordinary scalar math.
+1. **Ergonomics-as-integrity.** The honest value is the sealed `Quantity[Unit]`:
+   it carries provenance, `float(x)` is the one bare-scalar exit, and there is no
+   `.magnitude` to strip. (RFC 0001 revised the round-2 "float subclass" sketch to
+   this value object — see §9.) *Build status: VERIFIED.*
 2. **Honesty under discontinuity.** Safety-facing analyses return formal refusals
-   or `UNDECIDABLE FROM CAM CARD` when the profile cannot prove a verdict.
+   or `UNDECIDABLE_FROM_CAM_CARD` when the profile cannot prove a verdict. *Build
+   status of the single-curve refusal path: VERIFIED. The stronger two-curve
+   bracketed verdict-agreement (D013) is `DESIGNED`, not built — today PTV/spring
+   are single-curve PASS/FAIL/UNDECIDABLE.*
 
 ## What this isn't
 

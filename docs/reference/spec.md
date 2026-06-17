@@ -48,8 +48,7 @@ and spring safety are downstream of, and source-blind to, that profile.
 ## Cam-card approximation
 
 Milestone 1 fits the published card with `SinePowerCamCardOperator`, exposed
-through `profiles_from_cam_card()` and the compatibility factory
-`CamCardApproxProfile()`. A fixed `sin^2` half-sine cannot fit both advertised
+through `profiles_from_cam_card()`. A fixed `sin^2` half-sine cannot fit both advertised
 duration and duration at 0.050 in for the reference card, so the operator uses:
 
 ```text

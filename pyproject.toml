@@ -22,6 +22,12 @@ cam-analyze = "cam_analyzer.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# PEP 561: ship the py.typed marker so the unit/frame typing guarantees
+# (the phantom-type harness) survive `pip install` and are honored by
+# downstream type-checkers.
+[tool.setuptools.package-data]
+cam_analyzer = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

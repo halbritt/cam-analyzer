@@ -8,14 +8,11 @@ from dataclasses import dataclass
 from cam_analyzer.profile import CamProfile
 from cam_analyzer.quantity import (
     Angle,
-    Answer,
     Crank,
-    Inch,
     ProvFloat,
     Provenance,
     Quantity,
     Refusal,
-    inferred,
 )
 
 
@@ -70,27 +67,6 @@ class DynamicCompressionResult:
         return self.intake_closing
 
 
-def dynamic_compression_ratio(
-    intake: CamProfile,
-    static_cr: float,
-    bore_mm: float,
-    stroke_mm: float,
-    rod_length_mm: float,
-) -> Answer:
-    """Compatibility wrapper returning only the stamped DCR or a refusal."""
-    result = analyze_dynamic_compression(
-        intake,
-        DynamicCompressionInput(
-            static_compression_ratio=static_cr,
-            geometry=EngineGeometry(bore_mm, stroke_mm, rod_length_mm),
-            closing_lift=inferred(0.050, Inch, "valve_side"),
-        ),
-    )
-    if isinstance(result, Refusal):
-        return result
-    return result.dynamic_compression_ratio
-
-
 def analyze_dynamic_compression(
     intake: CamProfile,
     inputs: DynamicCompressionInput,
@@ -122,10 +98,28 @@ def analyze_dynamic_compression(
             provenance=provenance,
         )
 
+    closing_abdc = _closing_abdc_degrees(closing.degrees)
+    if closing_abdc > 180.0:
+        # Intake closing resolved before BDC. The crank-slider relation has no
+        # honest effective stroke here; silently clamping to the full stroke
+        # would launder this into a maximal, confidently-stamped DCR. Refuse.
+        return Refusal(
+            requested="dynamic compression ratio",
+            reason=(
+                "intake closing resolves before BDC "
+                f"({closing_abdc:.1f} deg ABDC) — DCR is undecidable from this geometry"
+            ),
+            remedy=(
+                "Use a profile whose intake closing resolves after BDC, or measure the "
+                "intake-closing event directly."
+            ),
+            provenance=provenance,
+        )
+
     effective_stroke = _effective_stroke_from_closing(
         inputs.geometry.stroke_mm,
         inputs.geometry.rod_length_mm,
-        closing.degrees,
+        closing_abdc,
     )
     dcr = 1.0 + (
         inputs.static_compression_ratio - 1.0
@@ -149,7 +143,17 @@ def _intake_closing_event(events: list[Angle[Crank]]) -> Angle[Crank] | None:
     return max(events, key=lambda event: event.degrees)
 
 
-def _effective_stroke_from_closing(stroke_mm: float, rod_length_mm: float, crank_deg: float) -> float:
+def _closing_abdc_degrees(crank_deg: float) -> float:
+    """Intake-closing crank angle expressed as degrees after BDC (ABDC).
+
+    Returns a value in [0, 360). A result greater than 180 means closing
+    resolved *before* BDC — out of range for the crank-slider effective-stroke
+    relation, which the caller surfaces as a refusal rather than clamping.
+    """
+    return (crank_deg - 180.0) % 360.0
+
+
+def _effective_stroke_from_closing(stroke_mm: float, rod_length_mm: float, closing_abdc: float) -> float:
     """Piston displacement from TDC at intake closing, via crank-slider geometry.
 
     The effective stroke is how far the piston has yet to travel toward TDC when
@@ -158,14 +162,13 @@ def _effective_stroke_from_closing(stroke_mm: float, rod_length_mm: float, crank
     ABDC approximation) makes rod length a first-class input: a longer rod dwells
     the piston nearer TDC, changing the displacement at a fixed closing angle.
     The number stays approximate, but every supplied geometry input now matters.
+
+    ``closing_abdc`` must be in range (0 <= ABDC <= 180); closing-before-BDC is
+    undecidable here and is refused by the caller, not silently clamped.
     """
     crank_radius_mm = stroke_mm / 2.0
     if rod_length_mm <= crank_radius_mm:
         raise ValueError("rod length is too short for the supplied stroke")
-    closing_abdc = (crank_deg - 180.0) % 360.0
-    if closing_abdc > 180.0:
-        # Closing resolved before BDC; the whole stroke is still available.
-        closing_abdc = 0.0
     # Crank angle measured from TDC. Intake closing sits at 180 deg + ABDC.
     theta = math.radians(180.0 + closing_abdc)
     rod_ratio = crank_radius_mm / rod_length_mm

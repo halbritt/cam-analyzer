@@ -6,23 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from cam_analyzer.profile import CamProfile
-from cam_analyzer.quantity import Angle, Crank, Inch, ProvFloat, inferred
-
-
-@dataclass(frozen=True, slots=True)
-class TimingEvents:
-    open_deg: float
-    close_deg: float
-    duration_deg: float
-
-
-@dataclass(frozen=True, slots=True)
-class TimingMap:
-    intake_centerline: Angle[Crank]
-    exhaust_centerline: Angle[Crank]
-    lobe_separation: Angle[Crank]
-    intake_events: TimingEvents
-    exhaust_events: TimingEvents
+from cam_analyzer.quantity import Angle, Crank, ProvFloat
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,39 +69,6 @@ def overlap_at_lift(intake: CamProfile, exhaust: CamProfile, lift: ProvFloat) ->
             if end > start:
                 total += end - start
     return Angle.crank(total)
-
-
-def events_for_profile(profile: CamProfile, lift: ProvFloat) -> TimingEvents:
-    events = profile.events_at_lift(lift)
-    if len(events) < 2:
-        return TimingEvents(0.0, 0.0, 0.0)
-    duration = profile.duration_at_lift(lift).degrees
-    first = events[0].degrees
-    second = events[1].degrees
-    arc = (second - first) % 720.0
-    midpoint = (first + arc / 2.0) % 720.0
-    if float(profile.lift_at(Angle.crank(midpoint))) >= float(lift):
-        open_deg = first
-        close_deg = second
-    else:
-        open_deg = second
-        close_deg = first
-    return TimingEvents(open_deg=open_deg, close_deg=close_deg, duration_deg=duration)
-
-
-def timing_map(
-    intake: CamProfile,
-    exhaust: CamProfile,
-    lift: ProvFloat | None = None,
-) -> TimingMap:
-    threshold = lift or inferred(0.050, Inch, "valve_side")
-    return TimingMap(
-        intake_centerline=centerline(intake),
-        exhaust_centerline=centerline(exhaust),
-        lobe_separation=lobe_separation_angle(intake, exhaust),
-        intake_events=events_for_profile(intake, threshold),
-        exhaust_events=events_for_profile(exhaust, threshold),
-    )
 
 
 def basic_timing_map(

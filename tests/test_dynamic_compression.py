@@ -4,7 +4,6 @@ from cam_analyzer.analysis.dynamic_compression import (
     DynamicCompressionInput,
     EngineGeometry,
     analyze_dynamic_compression,
-    dynamic_compression_ratio,
 )
 from cam_analyzer.profile import AnalysisKind
 from cam_analyzer.quantity import (
@@ -95,17 +94,31 @@ def test_dynamic_compression_can_loudly_downgrade_when_allowed() -> None:
     assert result.dynamic_compression_ratio.provenance == Provenance.EXTRAPOLATED
 
 
-def test_legacy_dynamic_compression_ratio_wrapper_accepts_source_agnostic_numbers() -> None:
-    result = dynamic_compression_ratio(
-        IntakeClosingProfile(Provenance.INFERRED),
-        static_cr=12.8,
-        bore_mm=77.0,
-        stroke_mm=53.6,
-        rod_length_mm=96.9,
-    )
+class ClosingBeforeBdcProfile(IntakeClosingProfile):
+    """Test double whose only intake-closing event resolves *before* BDC.
 
-    assert not isinstance(result, Refusal)
-    assert 1.0 < float(result) < 12.8
+    With a sole closing event at 120 deg crank, ``_intake_closing_event`` selects
+    it (no after-BDC candidate), and (120 - 180) % 360 = 300 deg "ABDC" lands in
+    the out-of-range, closing-before-BDC region the analysis must refuse on.
+    """
+
+    def lift_at(self, angle: Angle) -> Quantity:
+        return Quantity._mint(0.050, "inch", "valve_side", Provenance.INFERRED)
+
+    def events_at_lift(self, lift: Quantity) -> list[Angle]:
+        return [Angle.crank(120.0)]
+
+
+def test_dynamic_compression_refuses_when_closing_resolves_before_bdc() -> None:
+    # Closing-before-BDC has no honest crank-slider effective stroke. The analysis
+    # must surface a Refusal, not launder it into a maximal full-stroke DCR with a
+    # confident INFERRED stamp.
+    result = analyze_dynamic_compression(ClosingBeforeBdcProfile(Provenance.INFERRED), _input())
+
+    assert isinstance(result, Refusal)
+    assert result.requested == "dynamic compression ratio"
+    assert "before BDC" in result.reason
+    assert "undecidable" in result.reason
 
 
 def test_cam_card_dcr_accepts_published_closing_boundary() -> None:

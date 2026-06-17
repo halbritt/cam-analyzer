@@ -17,7 +17,7 @@ from typing import Any, Callable
 import pytest
 
 import cam_analyzer.quantity as quantity_module
-from cam_analyzer.conformance import CORPUS
+from cam_analyzer.conformance import CORPUS, DECLARED_ONLY
 from cam_analyzer.quantity import Angle, Inch, Provenance, Quantity, extrapolated, inferred, measured
 
 _EXECUTABLE_TRAPS = {
@@ -99,7 +99,7 @@ def _cam_card_profiles(card: Any) -> tuple[Any, ...]:
     module = _cam_card_module()
     if module is None:
         return ()
-    return _flatten_profile_candidates(module.CamCardApproxProfile(card))
+    return _flatten_profile_candidates(module.profiles_from_cam_card(card))
 
 
 def _assert_refused_or_not_measured(query: Callable[[], Any]) -> None:
@@ -129,6 +129,26 @@ def _assert_refused_or_unconstructable(query: Callable[[], Any]) -> None:
 @pytest.mark.parametrize("trap_name", sorted(_EXECUTABLE_TRAPS))
 def test_executable_traps_remain_in_the_conformance_corpus(trap_name: str) -> None:
     assert trap_name in {trap.name for trap in CORPUS}
+
+
+def test_every_corpus_trap_is_executable_or_explicitly_declared_only() -> None:
+    # Coverage guard: a trap is either exercised by a test (in _EXECUTABLE_TRAPS) or
+    # explicitly admitted as declared-only (in conformance.DECLARED_ONLY). Adding a
+    # new corpus trap without a witness now fails here until it is classified, so the
+    # silent declared-vs-executable gap cannot grow.
+    classified = _EXECUTABLE_TRAPS | DECLARED_ONLY
+    unclassified = sorted(trap.name for trap in CORPUS if trap.name not in classified)
+    assert not unclassified, (
+        "every conformance trap must be executable or explicitly declared-only; "
+        f"unclassified: {unclassified}"
+    )
+    # A trap cannot be both — declared-only means there is no executable witness.
+    overlap = sorted(_EXECUTABLE_TRAPS & DECLARED_ONLY)
+    assert not overlap, f"a trap is both executable and declared-only: {overlap}"
+    # Neither set may name a trap absent from the frozen corpus.
+    corpus_names = {trap.name for trap in CORPUS}
+    stray = sorted(name for name in classified if name not in corpus_names)
+    assert not stray, f"classified trap names absent from the corpus: {stray}"
 
 
 def test_advertised_lt_050_refuses_incoherent_cam_card() -> None:
@@ -244,6 +264,20 @@ def test_no_public_value_factory_confers_provenance_by_argument() -> None:
     assert not offenders, f"public value factories must not accept provenance=: {offenders}"
 
 
+def _argument_is_measured(argument: ast.expr) -> bool:
+    """True if an argument node denotes MEASURED — ``Provenance.MEASURED`` or a bare ``MEASURED``.
+
+    Catches the keyed-mint back door: ``Quantity._mint(..., Provenance.MEASURED)``
+    fabricates MEASURED from any module, so a MEASURED-carrying ``_mint`` call is
+    just as much a conferral as ``measured()`` and must be confined identically.
+    """
+    if isinstance(argument, ast.Attribute):
+        return argument.attr == "MEASURED"
+    if isinstance(argument, ast.Name):
+        return argument.id == "MEASURED"
+    return False
+
+
 def test_measured_conferral_is_confined_to_the_source_layer() -> None:
     offenders: list[str] = []
     for path in _PACKAGE_ROOT.rglob("*.py"):
@@ -251,14 +285,21 @@ def test_measured_conferral_is_confined_to_the_source_layer() -> None:
             continue
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                func = node.func
-                called = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
-                if called == "measured":
-                    offenders.append(f"{path.relative_to(_PACKAGE_ROOT)}:{node.lineno}")
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            called = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if called == "measured":
+                offenders.append(f"{path.relative_to(_PACKAGE_ROOT)}:{node.lineno}")
+            elif called == "_mint" and any(
+                _argument_is_measured(arg) for arg in (*node.args, *(kw.value for kw in node.keywords))
+            ):
+                # The keyed mint carrying a MEASURED literal is MEASURED conferral too.
+                offenders.append(f"{path.relative_to(_PACKAGE_ROOT)}:{node.lineno}")
     assert not offenders, (
-        "measured() (MEASURED conferral) may only be called in the source layer or the "
-        f"spec-policy authority (analysis/safety.py); found: {offenders}"
+        "MEASURED conferral — via measured() or a MEASURED-carrying Quantity._mint(...) — "
+        "may only happen in the source layer or the spec-policy authority "
+        f"(analysis/safety.py); found: {offenders}"
     )
 
 
@@ -281,6 +322,15 @@ def test_phantom_types_make_unit_and_frame_errors() -> None:
     # while their legal counterparts type-check.
     mypy_command = _mypy_command()
     if mypy_command is None:
+        # Under enforcement (the hook/make/CI set CAM_ANALYZER_REQUIRE_MYPY=1) an
+        # absent mypy must FAIL loudly — silently skipping would drop the C6
+        # phantom-type guarantee. For a casual install the env var is unset and we
+        # skip for portability.
+        if os.environ.get("CAM_ANALYZER_REQUIRE_MYPY") == "1":
+            pytest.fail(
+                "CAM_ANALYZER_REQUIRE_MYPY=1 but mypy is not installed; the C6 "
+                "phantom-type guarantee cannot be enforced (pip install -e '.[dev]')"
+            )
         pytest.skip("mypy is not installed in this environment (pip install -e '.[dev]')")
     fixture = Path(__file__).resolve().parent / "typing" / "phantom_type_traps.py"
     environment = {**os.environ, "MYPYPATH": str(_REPO_ROOT / "src")}

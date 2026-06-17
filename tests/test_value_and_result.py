@@ -11,11 +11,13 @@ from cam_analyzer.quantity import (
     Mm,
     Provenance,
     Quantity,
+    Refusal,
+    SafetyVerdict,
+    VerdictResult,
     extrapolated,
     inferred,
     measured,
 )
-from cam_analyzer.result import Refusal, SafetyVerdict, VerdictResult
 
 
 def _assert_inferred_lift(stamped_lift: Quantity[Inch]) -> None:

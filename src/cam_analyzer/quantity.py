@@ -62,10 +62,6 @@ class Mm(UnitTag):
     symbol = "mm"
 
 
-class Ratio(UnitTag):
-    symbol = "ratio"
-
-
 class InchPerDeg(UnitTag):
     symbol = "inch_per_deg"
 
@@ -331,7 +327,6 @@ __all__ = [
     "ProvFloat",
     "Provenance",
     "Quantity",
-    "Ratio",
     "Refusal",
     "Result",
     "SafetyVerdict",

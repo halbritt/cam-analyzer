@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from cam_analyzer.profile.canonical import CanonicalCamProfile, CanonicalLiftModel, LiftOperator
@@ -24,12 +24,6 @@ _APPROX_MIN_SINE = 0.05
 # events stamp INFERRED while the nose gap and pre-open/post-close arcs stay
 # EXTRAPOLATED.
 _BOUNDARY_EPSILON_DEG = 1e-6
-# Published cam-card durations are whole degrees, so each is only known to ±0.5°.
-# The approximate-derivative uncertainty band re-fits the flank across this
-# tolerance box (D013's earliest/latest-plausible bracketing applied to a
-# derivative). It captures the card's *numeric* tolerance only — never the
-# sine-power flank-shape assumption, which is why the value stays EXTRAPOLATED.
-_CARD_DURATION_TOLERANCE_DEG = 0.5
 
 CamSide = Literal["intake", "exhaust"]
 
@@ -232,53 +226,6 @@ class SinePowerCamCardOperator:
             )
         )
 
-    def approximate_derivative_band(self, order: int, crank_deg: float) -> tuple[float, float]:
-        """Bracket the approximate n-th derivative over the cam card's tolerance.
-
-        Published durations are whole degrees (±0.5°). Re-fit the sine-power flank
-        across that tolerance box and return ``(low, high)`` — D013 earliest/latest
-        bracketing applied to a derivative. The bracket reflects the card's
-        *numeric* tolerance only, **not** the sine-power flank-shape assumption,
-        so it is a lower bound on total uncertainty; the value stays EXTRAPOLATED
-        and barred from the cliff gates regardless of how tight the band looks.
-        """
-        if order not in (1, 2, 3):
-            raise ValueError("approximate_derivative_band supports orders 1-3")
-        estimates: list[float] = []
-        for advertised, duration_050 in self._tolerance_corners():
-            sibling = self._perturbed(advertised, duration_050)
-            if sibling is None or sibling.max_approximate_derivative(crank_deg) < order:
-                continue
-            estimates.append(sibling.approximate_derivative(order, crank_deg))
-        if not estimates:
-            # No perturbed corner applies here; fall back to the central fit so the
-            # band is a (degenerate) point rather than a fabricated spread.
-            estimates.append(self.approximate_derivative(order, crank_deg))
-        return (min(estimates), max(estimates))
-
-    def _tolerance_corners(self) -> tuple[tuple[float, float], ...]:
-        tolerance = _CARD_DURATION_TOLERANCE_DEG
-        advertised = self._lobe.advertised_duration_deg
-        duration_050 = self._lobe.duration_050_deg
-        deltas = (-tolerance, 0.0, tolerance)
-        return tuple(
-            (advertised + d_adv, duration_050 + d_050) for d_adv in deltas for d_050 in deltas
-        )
-
-    def _perturbed(
-        self, advertised_duration_deg: float, duration_050_deg: float
-    ) -> "SinePowerCamCardOperator | None":
-        try:
-            lobe = replace(
-                self._lobe,
-                advertised_duration_deg=advertised_duration_deg,
-                duration_050_deg=duration_050_deg,
-            )
-            return SinePowerCamCardOperator(lobe, self._side)
-        except ValueError:
-            # A perturbed corner that violates a CamLobeSpec invariant is dropped.
-            return None
-
     def _offset_from_center(self, crank_deg: float) -> float:
         return ((crank_deg - self._centerline_crank_deg + 360.0) % 720.0) - 360.0
 
@@ -290,11 +237,6 @@ class SinePowerCamCardOperator:
         if not 0.0 < base < 1.0 or not 0.0 < target < 1.0:
             raise ValueError("cam-card durations cannot fit a sine-power approximation")
         return math.log(target) / math.log(base)
-
-
-# Backward-compatible name from the architecture skeleton. The implementation is
-# the fitted sine-power variant described above, not a fixed sin^2 curve.
-HalfSineCamCardOperator = SinePowerCamCardOperator
 
 
 def profiles_from_cam_card(
@@ -331,13 +273,6 @@ def exhaust_profile_from_cam_card(
     return _profile_from_lobe(
         card.exhaust, "exhaust", approximate_derivatives=approximate_derivatives
     )
-
-
-def CamCardApproxProfile(  # noqa: N802
-    card: CamCard, *, approximate_derivatives: bool = False
-) -> CamCardProfiles:
-    """Compatibility factory returning both side-specific profiles."""
-    return profiles_from_cam_card(card, approximate_derivatives=approximate_derivatives)
 
 
 def _profile_from_lobe(
@@ -387,10 +322,8 @@ if TYPE_CHECKING:
 __all__ = [
     "CHECKING_LIFT_IN",
     "CamCard",
-    "CamCardApproxProfile",
     "CamCardProfiles",
     "CamLobeSpec",
-    "HalfSineCamCardOperator",
     "SinePowerCamCardOperator",
     "exhaust_profile_from_cam_card",
     "intake_profile_from_cam_card",

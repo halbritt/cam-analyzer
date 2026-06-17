@@ -24,6 +24,23 @@ class Trap:
     intent: str  # what a conformant boundary must do: refuse / cannot-construct
 
 
+DECLARED_ONLY: frozenset[str] = frozenset(
+    {
+        "non_monotone_then_returns",
+        "never_closes",
+        "seam_phantom_jerk",
+    }
+)
+"""Traps named in the corpus that have no executable witness yet.
+
+Every corpus trap must be EITHER exercised by a test (the test module's
+``_EXECUTABLE_TRAPS`` set) OR listed here. The coverage guard
+(``tests/test_conformance_traps.py``) asserts that partition holds, so a new trap
+cannot be added without either a witness or an explicit declared-only admission —
+the declared-vs-executable gap can no longer grow silently.
+"""
+
+
 CORPUS: tuple[Trap, ...] = (
     Trap("non_monotone_then_returns", "lift that dips negative then recovers must be rejected"),
     Trap("never_closes", "lift that never returns to seat over 720° must be rejected"),

@@ -1,0 +1,25 @@
+#!/bin/sh
+# cam-analyzer pre-push hook (S1 / WS-ENFORCE).
+#
+# Runs the full local guard suite before any push, so the honesty guards
+# (C1 boundary test, mypy phantom-type harness, ruff, import-linter contract)
+# are enforced by MECHANISM rather than reviewer vigilance (D007).
+#
+# Enable once per clone with:
+#     git config core.hooksPath .githooks      # or: make hooks
+#
+# To bypass in an emergency: `git push --no-verify` (use sparingly — it
+# defeats the whole point of the hook).
+set -e
+
+# Resolve the repo root so the hook works regardless of $PWD.
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+echo "pre-push: running 'make check' ..."
+if ! make check; then
+	echo "pre-push: 'make check' FAILED — push blocked." >&2
+	echo "          fix the failures, or 'git push --no-verify' to override." >&2
+	exit 1
+fi
+echo "pre-push: all guards passed — push allowed."

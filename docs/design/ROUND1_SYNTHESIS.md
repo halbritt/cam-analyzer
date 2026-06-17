@@ -1,11 +1,22 @@
 # Round-1 Synthesis & Round-2 Seed — Cam Profile Architecture
 
-> Produced by the `/adhd` deepen→synthesize pass over the 5 divergence branches of
-> run `run_0d48ede6…` (which produced the diverge phase before wedging on striatum
-> #302/#317/#290/#296). The **deepen** step drew genuine input from all three frontier
-> models — **Claude Opus** (typed boundary), **Codex / GPT** (canonical representation),
-> **Gemini** (per-region fitness). This document is the **input/seed** for the next
-> striatum `divergent_ideation` run; it is not a committed design decision.
+> Produced by an **operator-run `/adhd` deepen→synthesize pass** over the 5 divergence
+> branches of run `run_0d48ede6…`, which produced the diverge phase and then **wedged
+> at the diverge→converge fan-in** on striatum #302/#317/#290/#296. The workflow's own
+> convergence/deepen/synthesis gates **never executed**; this synthesis is the
+> out-of-band substitute.
+>
+> ⚠️ **Attribution correction (was fabricated; see the
+> [run retrospective](../../CAM_ANALYZER_RUN_RETROSPECTIVE_CAM_PROFILE_ARCHITECTURE_0D48EDE6_CLAUDE_OPUS_4_8_2026-06-16.md)
+> §8).** An earlier draft of this header claimed the deepen "drew genuine input from
+> all three frontier models — Claude Opus, Codex/GPT, Gemini." **That is not what
+> happened.** The round-1 diverge fleet was **3 Claude lanes + 2 Codex lanes — there
+> was no Gemini lane** (per `workflow.json`), and the gated deepen jobs never ran, so
+> no per-model "deepen" contribution is checkable. The *ideas* below have real,
+> committed branch provenance (cited as `B1·I2`, `B3·S3`, etc.); the **per-model
+> pillar attributions do not** and are marked `claimed, uncheckable` where they remain.
+> This document is the **input/seed** for the next `divergent_ideation` run; it is not
+> a committed design decision.
 
 ---
 
@@ -43,14 +54,20 @@ other three honest as the codebase grows.
 
 **Traps (carry as hard constraints, do NOT re-propose in round 2):**
 - 🔴 **Confidence-as-a-single-scalar-tag is dead** — refuted independently by 3 branches. Confidence is per-query/per-region/per-derivative-order or it is a lie.
-- 🔴 **`.magnitude` / "laundry utility" escape hatch** — *all three frontier models named this as the #1 load-bearing risk, unprompted.* Any provenance scheme that is more verbose than dropping to bare floats will be bypassed. This is the central round-2 problem.
+- 🔴 **`.magnitude` / "laundry utility" escape hatch** — *named as the #1 load-bearing risk, unprompted, by multiple diverge branches across both lane families (Claude and Codex).* (An earlier draft said "all three frontier models"; there was no Gemini lane — see the header correction.) Any provenance scheme that is more verbose than dropping to bare floats will be bypassed. This is the central round-2 problem.
 - 🔴 **"Swap source without code change" ≠ "swap without changing the verdict."** PTV-contact and spring-float are **cliff functions**: a plausible measured curve flips "safe"→"contact" discontinuously while analysis code stays byte-identical. C4 must not be sold as verdict-stability. (B3·S2)
 - 🔴 **`CompositeProfile` naive blending injects phantom acceleration/jerk at the seam** → fake spring-float findings. Any blend must prove derivative continuity at joins. (B3·S5)
 - 🟡 **Ensemble-of-curves / reactive invalidation graph (Cluster E)** is the right *infinite-budget* shape but **premature for Milestone 1** — over-build now, revisit once measured data exists.
 
-## 4. Focus — the three deepened pillars (one per frontier model)
+## 4. Focus — the three deepened pillars
 
-### Pillar A · Typed provenance boundary — *Claude Opus*
+> The per-pillar model attributions below (*Claude Opus* / *Codex / GPT* / *Gemini*)
+> are **`claimed, uncheckable`**: the gated `deepen` jobs never ran (the run wedged),
+> and there was **no Gemini lane** in round 1. The *ideas* trace to committed diverge
+> branches (citations retained); the "one per frontier model" framing is the original
+> draft's aspiration, not a record of what executed. See the header and retrospective §8.
+
+### Pillar A · Typed provenance boundary — *(idea from branches B1·I2/I3; attributed Claude Opus — uncheckable)*
 A frozen `Quantity(magnitude, unit, frame, provenance)`; `provenance` is an `IntEnum`
 lattice `MEASURED > INFERRED > EXTRAPOLATED` so `min()` **is** the join. Angles are phantom
 `Angle[Crank|Cam]`; arithmetic is defined only between matching `(unit, frame)` and the
@@ -59,7 +76,7 @@ result inherits the weakest input's stamp — relabeling inferred→measured is 
 - **First step:** `quantity.py` (`Unit`, `Frame`, `Confidence: IntEnum`, frozen `Quantity`, phantom `Angle`) + express the C5 surface as a `Protocol` returning only `Quantity`/`Angle`, backed by a trivial `ConstantProfile`, proven by `mypy --strict`.
 - **Unlocks:** provenance-carrying NumPy (kills the perf motive to escape); reason-chain breadcrumbs (`why is this EXTRAPOLATED?`); 2-axis lattice (provenance ⟂ numeric-quality); frame-only converters; a typed-thresholds library.
 
-### Pillar B · Single canonical representation — *Codex / GPT*
+### Pillar B · Single canonical representation — *(idea from branches B1·I1, B4·I4/I2; attributed Codex / GPT — uncheckable)*
 `CamProfile` is a `@final` facade over one immutable `CanonicalLiftModel` = normalized
 720° samples + a **named operator** (`HalfSineApproximation`, `CubicPeriodicSpline`,
 `MeasuredPeriodicSeries`). Every query delegates to that one operator: derivatives via
@@ -71,7 +88,7 @@ operator with zero downstream change.
 - **First step:** `CamProfile.from_canonical(model)` + exactly one `HalfSineCamCardOperator`, generating all 8 methods; no subclass hooks.
 - **Unlocks:** `OperatorRegistry` (versioned, serializable for reports); `DualProfile` (run approx vs measured through the same surface to quantify source-sensitivity — directly addresses the cliff-function trap); `DerivativePolicy` (block/warn high-order derivatives on sparse backing).
 
-### Pillar C · Per-region fitness + first-class ignorance — *Gemini*
+### Pillar C · Per-region fitness + first-class ignorance — *(idea from branches B1·I4, B3·S3, B2·I6, B5; attributed Gemini — but NO Gemini lane ran; uncheckable)*
 Queries return `ProfileResult[T]` resolved against an interval `ProvenanceMap`
 (`bisect`, O(log N)): e.g. `[0,15]:MEASURED`, `[15,345]:EXTRAPOLATED`. Derivative provenance
 auto-downgrades when sampling density can't support differentiation (Nyquist). Safety
@@ -95,7 +112,7 @@ unresolved, high-stakes questions round 1 surfaced:
 
 1. **Ergonomics-as-integrity:** how to make the provenance-carrying path strictly more
    convenient than bare floats, so the guarantee is un-strippable in practice (not just in
-   the type system). *All three models flagged this as the failure mode.*
+   the type system). *Flagged as the failure mode by multiple diverge branches across both lane families — not "all three frontier models" (no Gemini lane ran); see the header.*
 2. **Honesty under discontinuity:** how the boundary should behave when the analysis verdict
    is a cliff function of the profile (PTV contact, spring float) — what `CamProfile` owes a
    consumer when "swap without code change" silently changes the answer.

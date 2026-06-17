@@ -30,7 +30,7 @@ finished product computes:
 | Valve-spring safety | coil-bind margin, retainer-to-guide margin, seat/open pressure, float RPM |
 | Acceleration / jerk | valvetrain dynamics from the curve's derivatives |
 | Install sensitivity | how advance/retard, lash, and deck/gasket variation move every result |
-| Reporting | HTML / PDF / Markdown summary with warnings and an install checklist |
+| Reporting | Markdown summary with warnings and an install checklist (HTML / PDF are `DESIGNED`, not built — only `render_markdown_report` exists) |
 
 Every one of these consumes **only** the `CamProfile` query surface. None of them
 can see a `CamCard`, a PDF/CSV parser, or a measured-data file.
@@ -95,16 +95,22 @@ conformance discipline that keeps them honest — see
   back-compat annotation alias for `Quantity`.
 - **B · One canonical representation.** A profile is a `@final` facade over one
   immutable `CanonicalLiftModel` + a named operator; the eight queries are
-  *generated* projections (derivatives differentiate one operator), so
-  inconsistent derivatives are unconstructable.
+  *generated* projections that delegate to that one operator, so
+  sparse-as-continuous is unconstructable. *Derivative consistency, though, is
+  operator-TRUSTED, not constructed:* an operator hand-writes `evaluate` and
+  `derivative` independently, so the stronger "inconsistent derivatives are
+  unconstructable" over-claims (see
+  [`adr-derivatives-operator-trusted.md`](docs/decisions/adr-derivatives-operator-trusted.md)).
 - **C · Per-region fitness.** Provenance is per query / per crank region / per
   derivative order; safety consumers must pattern-match ignorance, so a
   fabricated seat-ramp value cannot be laundered into a "safe" verdict.
 - **D · Conformance by adversary corpus.** The durable asset is the suite of
-  traps a profile must refuse or be unable to construct. Many are now executable
-  (C1 import guard; C3 sealed-mint / no-`provenance=` / MEASURED-confined-to-source
-  traps; C6 cross-unit and cam-as-crank `mypy` traps); the rest stay declared
-  until their machinery lands.
+  traps a profile must refuse or be unable to construct. **9 of ~12 are
+  executable** (C1 import guard; C3 sealed-mint / no-`provenance=` /
+  `measured()`-confined-to-the-source-layer-plus-`analysis/safety.py` traps; C6
+  cross-unit and cam-as-crank `mypy` traps); the rest stay declared-only until
+  their machinery lands. The full status of every claim is tracked in
+  [`docs/CLAIMS_LEDGER.md`](docs/CLAIMS_LEDGER.md).
 
 ## Round 2 — the chosen build plan
 
@@ -130,15 +136,20 @@ Build in this order — each pick answers one open question and sits on the prio
    > value object, not a float subclass — same ergonomics for the legal cases
    > (`float(x)`, scaling, same-unit arithmetic), but cross-unit math is now a type
    > error. NumPy interop (`ProvArray`) remains a follow-on.
-2. **Derivative-capability matrix + Nyquist.** Before `velocity/acceleration/jerk_at`
-   answers, check whether the data supports that derivative order: pass → a stamped
-   value, fail → a structured `Refusal{requested_order, max_supported, reason, remedy}`.
-   A sparse cam-card approximation therefore cannot emit authoritative jerk fiction.
-3. **Bracketed verdict-agreement** (honesty-under-discontinuity). For cliff functions
-   (PTV contact, spring float) build the earliest- and latest-plausible curves from the
-   card's own tolerances, run the identical analysis on both, and publish only whether
-   the *verdict* agrees; a flip emits **`UNDECIDABLE FROM CAM CARD`**, never a number.
-   This is C4/D009 honored by construction.
+2. **Derivative-capability matrix + Nyquist.** *(`VERIFIED`, partial.)* Before
+   `velocity/acceleration/jerk_at` answers, check whether the data supports that
+   derivative order: pass → a stamped value, fail → a structured
+   `Refusal{requested_order, max_supported, reason, remedy}`. A sparse cam-card
+   approximation therefore cannot emit authoritative jerk fiction.
+3. **Bracketed verdict-agreement** (honesty-under-discontinuity). *(`DESIGNED` —
+   accepted, **not built**.)* The intent: for cliff functions (PTV contact, spring
+   float) build the earliest- and latest-plausible curves from the card's own
+   tolerances, run the identical analysis on both, and publish only whether the
+   *verdict* agrees; a flip emits **`UNDECIDABLE_FROM_CAM_CARD`**, never a number.
+   **In code today this is *not* built** — `analysis/piston_to_valve.py` and
+   `analysis/spring_safety.py` are single-curve PASS/FAIL/`UNDECIDABLE_FROM_CAM_CARD`
+   with no two-curve loop. The C4/D009 "swap ≠ verdict-stable" honesty currently
+   rests on the single-curve refusal; the bracket is deferred roadmap work.
 
 ★ **Non-obvious pick — separate the *threshold owner* from the *curve owner*.** The cliff
 lives in the policy, not the curve: a named threshold policy owns *where safe becomes
@@ -185,8 +196,33 @@ pytest
 
 Milestone 1 is implemented: the reference cam card can produce intake and exhaust
 `CamProfile` objects, run source-blind timing/overlap and approximate DCR, and
-return formal refusals or undecidable safety verdicts where cam-card evidence is
-insufficient.
+return formal refusals or undecidable (single-curve) safety verdicts where
+cam-card evidence is insufficient.
+
+## Enforcement
+
+The boundary guarantees are only load-bearing if the mechanism runs without being
+asked. The repo ships that mechanism:
+
+```bash
+make check    # pytest + mypy (--strict) + ruff check + import-linter (lint-imports)
+make hooks    # git config core.hooksPath .githooks  — enable the pre-push hook
+```
+
+- **`make check`** runs the full guard set: `pytest` (incl. the conformance
+  corpus), `mypy --strict` (the phantom-unit/frame guarantee), `ruff check`, and
+  `lint-imports` (the C1 one-way-dependency boundary). When `mypy` is required
+  (`CAM_ANALYZER_REQUIRE_MYPY=1`, set by the hook/CI) its absence is a hard
+  failure, not a silent skip.
+- **`make hooks`** enables `.githooks/pre-push`, which runs `make check` before a
+  push so a violation can't reach the remote. (Equivalent to
+  `git config core.hooksPath .githooks`.)
+- `src/cam_analyzer/py.typed` ships so the unit/frame typing guarantee survives a
+  downstream `pip install`.
+
+Every reconciled doc claim carries a build-status stamp
+(`VERIFIED`/`ASSERTED`/`DESIGNED`); the manifest is
+[`docs/CLAIMS_LEDGER.md`](docs/CLAIMS_LEDGER.md).
 
 ## Documentation
 
@@ -194,7 +230,8 @@ insufficient.
 - [`docs/explanation/domain-driven-design.md`](docs/explanation/domain-driven-design.md) — what's load-bearing and why.
 - [`docs/reference/ubiquitous-language.md`](docs/reference/ubiquitous-language.md) — the canonical glossary.
 - [`docs/reference/spec.md`](docs/reference/spec.md) — the product boundary (source of truth).
-- [`docs/decisions/decision-log.md`](docs/decisions/decision-log.md) — the boundary decisions and why.
+- [`docs/decisions/decision-log.md`](docs/decisions/decision-log.md) — the boundary decisions and why (each with a build-status stamp).
+- [`docs/CLAIMS_LEDGER.md`](docs/CLAIMS_LEDGER.md) — every decision/feature/guard × `VERIFIED`/`ASSERTED`/`DESIGNED` × witness.
 - [`docs/index.md`](docs/index.md) — every doc, one line each.
 
 ## Provenance
@@ -213,4 +250,13 @@ pillars and the build plan above.
 Both rounds are syntheses, not frozen decisions: round 1 settled the skeleton
 (Pillars A/B/C + the conformance discipline D); round 2 resolved the two open
 questions into the build plan above. The decision log marks which parts are
-`accepted` vs `proposed`.
+`accepted` vs `proposed` and stamps each with a build status.
+
+> **Attribution caveat (honesty note).** The round-1 run *wedged* at the
+> diverge→converge fan-in; convergence and synthesis were reproduced out-of-band.
+> The round-1 diverge fleet was **3 Claude + 2 Codex lanes — there was no Gemini
+> lane** — so the "all three frontier models" / "Pillar C · Gemini" attributions
+> in `ROUND1_SYNTHESIS.md` are corrected there. The *ideas* have real committed
+> branch provenance; the per-model deepen attributions do not. See the
+> [run retrospective](CAM_ANALYZER_RUN_RETROSPECTIVE_CAM_PROFILE_ARCHITECTURE_0D48EDE6_CLAUDE_OPUS_4_8_2026-06-16.md)
+> §8 for the model-checked account.

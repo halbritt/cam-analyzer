@@ -20,7 +20,7 @@ an inferred lift value as if it were measured.
 | Layer (package) | Role |
 |---|---|
 | `cam_analyzer.sources` | **Producers.** Source-specific ingest: `CamCard` and its parsers (manual, CSV, PDF, OCR), measured-lift import, Cam Doctor, lobe coordinates. Each emits a `CamProfile`; nothing here is importable by analysis. |
-| `cam_analyzer.profile` | **The boundary.** The `CamProfile` port (the C5 query surface), the canonical lift model + named operator that backs it (Pillar B), the `ProvFloat` stamped scalar and provenance lattice (Pillar A), and the per-region `ProvenanceMap` (Pillar C). |
+| `cam_analyzer.profile` | **The boundary.** The `CamProfile` port (the C5 query surface), the canonical lift model + named operator that backs it (Pillar B), the sealed `Quantity[Unit]` stamped scalar (`ProvFloat` is a back-compat alias) and provenance lattice (Pillar A), and the per-region `ProvenanceMap` (Pillar C). |
 | `cam_analyzer.analysis` | **Consumers.** The eight analyses. Each imports only `cam_analyzer.profile` (+ stdlib/numpy). A consumer that needs a source-specific fact is a design bug, caught by a test. |
 | `cam_analyzer.conformance` | **The honesty harness (Pillar D).** A frozen adversary corpus of traps every profile must refuse, plus the C1 import guard. This is the durable asset that keeps the other three honest as the codebase grows. |
 
@@ -40,18 +40,25 @@ adopt them together. Full rationale: [`docs/design/ROUND1_SYNTHESIS.md`](docs/de
   stamp. Construction is **sealed**: a `Quantity` can't be built without the
   module-private mint token, provenance is *conferred* by acquisition factories
   (`measured`/`inferred`/`extrapolated`) rather than passed as an argument, and
-  `measured()` is confined to the source / spec-policy layer — so relabeling
-  inferred→measured is genuinely **unconstructable** (not just discouraged). The
+  `measured()` conferral is confined to **the source layer + `analysis/safety.py`**
+  (the spec-policy authority) — enforced by the `measured_confined_to_sources`
+  trap (`tests/test_conformance_traps.py::test_measured_conferral_is_confined_to_the_source_layer`)
+  — so relabeling inferred→measured is genuinely **unconstructable** (not just
+  discouraged). The
   unit is a phantom *type* parameter and angles are phantom-typed
   `Angle[Crank|Cam]`, so `mm + inch` and cam-as-crank are `mypy` errors. There is
   no `.magnitude`; the one bare-scalar exit is `float(x)`. `ProvFloat` is now a
   back-compat alias for `Quantity`.
 - **B · Single canonical representation** — `CamProfile` is a `@final` facade over
   one immutable `CanonicalLiftModel` (normalized 720° samples + a *named* operator:
-  `SinePowerCamCardApproximation`, `CubicPeriodicSpline`, `MeasuredPeriodicSeries`). Every
-  query delegates to that one operator; derivatives differentiate it; reductions
-  reduce it. Implementers supply only the canonical object — no method bodies — so
-  inconsistent derivatives and sparse-as-continuous are unconstructable.
+  `SinePowerCamCardOperator` today; `CubicPeriodicSpline`, `MeasuredPeriodicSeries`
+  planned). Every query delegates to that one operator. **Sparse-as-continuous is
+  unconstructable** (trapped, `VERIFIED`). **Derivative consistency, however, is
+  operator-TRUSTED, not constructed** (`ASSERTED`): an operator hand-writes
+  `evaluate` and `derivative` as *independent* methods (`sources/cam_card.py:138`,
+  `:149`); nothing differentiates one to check the other, so the stronger claim
+  "inconsistent derivatives are unconstructable" over-states what the code
+  guarantees. See [`adr-derivatives-operator-trusted.md`](docs/decisions/adr-derivatives-operator-trusted.md).
 - **C · Per-region fitness + first-class ignorance** — queries return a value
   resolved against an interval `ProvenanceMap` (`bisect`, O(log N)): e.g.
   `[0,15]:MEASURED`, `[15,345]:EXTRAPOLATED`. Derivative provenance auto-downgrades
@@ -59,11 +66,13 @@ adopt them together. Full rationale: [`docs/design/ROUND1_SYNTHESIS.md`](docs/de
   `is_good_enough_for(AnalysisKind)` without coupling to the source; safety
   consumers must pattern-match the unsupported case.
 - **D · Conformance by adversary corpus** — the suite of traps a profile must
-  refuse or be unable to construct *is* the spec of correctness. Many traps are now
-  executable, converting C1 (import guard), C3 (sealed mint, no `provenance=`,
-  MEASURED-confined-to-source), and C6 (cross-unit and cam-as-crank `mypy` traps)
-  from reviewer vigilance into CI; the rest stay declared until their machinery
-  lands.
+  refuse or be unable to construct *is* the spec of correctness. **9 of the ~12
+  traps are executable** (`_EXECUTABLE_TRAPS`, `tests/test_conformance_traps.py:23`;
+  `VERIFIED`), converting C1 (import guard), C3 (sealed mint, no `provenance=`,
+  `measured()`-confined-to-source-layer-plus-`analysis/safety.py`), and C6
+  (cross-unit and cam-as-crank `mypy` traps) from reviewer vigilance into CI; the
+  rest (e.g. `seam_phantom_jerk`/D010) stay **declared-only** (`DESIGNED`) until
+  their machinery lands.
 
 ## The boundary contract (C5 surface)
 
@@ -106,20 +115,27 @@ open, under one rule: **a value — or a verdict — may leave the boundary only
 its fitness is proven; the instant it can't be, the boundary says so loudly.**
 Build order (each pick sits on the prior):
 
-1. **`ProvFloat`** (resolves ergonomics-as-integrity, D012) — a `float` *subclass*
-   carrying one `Provenance` stamp. Refines Pillar A: there is no `.magnitude` field
-   to strip, arithmetic propagates the lattice-`min` stamp, and the only exit is
-   `float(x)` — grep-able and lint-flagged. Follow-on `ProvArray` (D017) covers NumPy,
-   where `np.asarray` silently drops a subclass.
-2. **Derivative-capability matrix + Nyquist gate** (D014) — `velocity/acceleration/
-   jerk_at` answer only where sample density supports that order, else return a
-   structured `Refusal`. Closes Pillar B's "smooth cam-card approximation emits
-   authoritative jerk" failure mode.
-3. **Bracketed verdict-agreement** (resolves honesty-under-discontinuity, D013) — run
-   cliff analyses (PTV, spring float) on the earliest- and latest-plausible curves from
-   the card's tolerances and publish only whether the *verdict* agrees; a flip emits
-   `UNDECIDABLE FROM CAM CARD`, never a number. The round-1 "swap ≠ verdict-stable" trap
-   honored by construction.
+1. **Ergonomics-as-integrity** (D012) — `VERIFIED`. Every query returns a sealed,
+   phantom-typed `Quantity[Unit]` carrying one `Provenance` stamp. **Revised by
+   RFC 0001 §9:** round 2 sketched a `float` *subclass*, but a float subclass
+   cannot make `mm + inch` a type error, so the value is a value object, **not** a
+   float subclass; `ProvFloat = Quantity[Any]` is a back-compat alias. There is no
+   `.magnitude` to strip; arithmetic propagates the lattice-`min` stamp; the only
+   bare-scalar exit is `float(x)`. Follow-on `ProvArray` (D017) for NumPy is
+   `DESIGNED` (not built).
+2. **Derivative-capability matrix + Nyquist gate** (D014) — `VERIFIED` (partial).
+   `velocity/acceleration/jerk_at` answer only where sample density supports that
+   order, else return a structured `Refusal`. Closes Pillar B's "smooth cam-card
+   approximation emits authoritative jerk" failure mode.
+3. **Bracketed verdict-agreement** (D013) — **`DESIGNED`, not built.** The intent:
+   run cliff analyses (PTV, spring float) on the earliest- and latest-plausible
+   curves from the card's tolerances and publish only whether the *verdict* agrees;
+   a flip emits `UNDECIDABLE_FROM_CAM_CARD`, never a number. **In code today,
+   PTV/spring are *single-curve* PASS/FAIL/UNDECIDABLE** (`analysis/piston_to_valve.py`,
+   `analysis/spring_safety.py`); there is no two-curve tolerance-envelope loop. The
+   round-1 "swap ≠ verdict-stable" trap is honored by the single-curve
+   `UNDECIDABLE_FROM_CAM_CARD` refusal, not yet by bracketing. Building the bracket
+   is deferred roadmap work.
 
 ★ **The cliff is in the policy, not the curve** (D015): a named **threshold owner**
 (*where* safe becomes unsafe) is separated from the **curve owner** (*what* the lift is),

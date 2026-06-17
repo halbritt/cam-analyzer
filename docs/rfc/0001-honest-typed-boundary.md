@@ -1,9 +1,12 @@
 # RFC 0001 — The Honest Typed Boundary
 
-- **Status:** Accepted — pillars A + B implemented (sealed `Quantity[Unit]` + phantom units/frames, §9 resolved to a non-float value object); pillar D's ergonomic-inversion machinery (`unsafe_strip` + `CAM001` lint) is a tracked follow-up
+- **Status:** Accepted. **Build status (per pillar):**
+  - **Pillar A (sealed construction)** — `VERIFIED`. Sealed `Quantity[Unit]`; minted only via acquisition factories; witnessed by the sealed-mint / no-`provenance=` traps in `tests/test_conformance_traps.py`.
+  - **Pillar B (phantom-typed units & frames)** — `VERIFIED`. `mm + inch` and cam-as-crank are `mypy --strict` errors; witnessed by `tests/test_conformance_traps.py::test_phantom_types_make_unit_and_frame_errors` (runs the fixture through mypy). §9 resolved to a non-float value object.
+  - **Pillar D (ergonomic inversion)** — `DESIGNED` (proposed, **not built**). `unsafe_strip`, the `CAM001`/`CAM002` ruff rules, the `allowlist.toml`, and the `ProvArray` NumPy shim **do not exist in `src`** (`grep -rn 'unsafe_strip\|CAM001\|CAM002\|ProvArray' src` finds nothing). The current bare-scalar exit is `float(x)`, not an audited `unsafe_strip(reason=…)`. Everything below describing Pillar D is a proposal, not a description of shipped code.
 - **Date:** 2026-06-17
 - **Addresses:** [#5](https://github.com/halbritt/cam-analyzer/issues/5) (typed boundary enforces C3/C6 by convention, not mechanism), [#6](https://github.com/halbritt/cam-analyzer/issues/6) (Protocol pitfalls), [#8](https://github.com/halbritt/cam-analyzer/issues/8) (cleanup)
-- **Resolves:** the round-2 *"ergonomics-as-integrity"* open problem from `docs/design/round2/IDEATION_SYNTHESIS.md` (flagged independently by all three frontier models)
+- **Resolves:** the round-2 *"ergonomics-as-integrity"* open problem from `docs/design/round2/IDEATION_SYNTHESIS.md` (the `.magnitude`-escape-hatch trap surfaced independently across the round-1 diverge branches — see `ROUND1_SYNTHESIS.md` and the run retrospective §8 for the accurate, model-checked attribution; the round-1 fleet was Claude + Codex, with **no Gemini lane**)
 - **Provenance:** produced via a `/adhd` divergent-ideation run — 5 isolated cognitive frames (regulator, attacker, remove-the-assumption, hardware/dimensional, biology) × 6 ideas, converged, then the top 3 clusters deepened.
 
 ---
@@ -14,9 +17,9 @@ cam-analyzer's whole value proposition is that an analysis can *trust* a number 
 
 1. **Sealed construction** — provenance is *conferred by acquisition*, never passed as an argument. `MEASURED` is unconstructable outside the source layer.
 2. **Phantom-typed units & frames** — `Quantity[Unit]` and `Angle[Frame]` carry unit/frame in the *type*, so mm-as-inch and cam-as-crank are **mypy errors**, not runtime hope.
-3. **Ergonomic inversion** — there is no bare `.magnitude`; the honest typed path is *shorter* than the one raw-float exit (`unsafe_strip(reason=…)`), which is greppable, lint-failed, and audited.
+3. **Ergonomic inversion** *(`DESIGNED`, not built)* — there is no bare `.magnitude` (built); the *proposed* one raw-float exit (`unsafe_strip(reason=…)`) would be greppable, lint-failed (`CAM001`), and audited. Today the exit is plain `float(x)`; `unsafe_strip`/`CAM001`/`CAM002` are unimplemented.
 
-A enforces honesty at **origination**, B at **propagation**, D removes the incentive to **bypass**. None requires crypto, a metaclass, or a runtime DAG — it's ordinary Python 3.12 + mypy + one small ruff rule.
+A enforces honesty at **origination** (built), B at **propagation** (built), D *would* remove the incentive to **bypass** (designed). None requires crypto, a metaclass, or a runtime DAG — it's ordinary Python 3.12 + mypy + one small ruff rule.
 
 ## 2. Motivation
 
@@ -26,7 +29,7 @@ The code review of the Milestone-1 implementation found the boundary's central c
 - `unit` is a `Literal[str]` *label*, so a millimetre magnitude tagged `"inch"` type-checks fine — C6 unenforced.
 - `Angle` is a single dataclass with a runtime `frame` field, so a cam angle passed where a crank angle is required is **not** a type error.
 
-And the round-2 synthesis already named the deeper trap: a provenance-carrying value layer only stays honest if the **honest path is strictly more ergonomic than reaching for the raw float** — otherwise developers strip the metadata (`q.magnitude * 25.4` and re-wrap) and the guarantees evaporate. All three frontier models independently flagged this as *the* load-bearing risk.
+And the round-2 synthesis already named the deeper trap: a provenance-carrying value layer only stays honest if the **honest path is strictly more ergonomic than reaching for the raw float** — otherwise developers strip the metadata (`q.magnitude * 25.4` and re-wrap) and the guarantees evaporate. The round-1 diverge branches surfaced this `.magnitude`-escape-hatch risk independently (across both the Claude and Codex lanes); the "all three frontier models" framing in earlier drafts mis-attributes it — see the run retrospective §8.
 
 **Goal:** make fabrication / mislabeling structurally impossible (or loud and traceable), while making the honest path the path of least resistance.
 
@@ -121,7 +124,13 @@ def lift_at(theta: Angle[Crank]) -> Quantity[Inch]: ...
 
 ### Pillar D — Ergonomic inversion (bypass): honest is shorter than dishonest
 
-There is **no `.magnitude`**. The value stores one private canonical magnitude; the public exits are *typed* and one-call:
+> **Build status: `DESIGNED` — proposed, not built.** None of `unsafe_strip`,
+> `CAM001`, `CAM002`, the `allowlist.toml`, or `ProvArray` exist in `src` today.
+> The value object already has no `.magnitude` and `float(x)` is the only
+> bare-scalar exit, so the *honesty* property holds; what is unbuilt is the
+> *audited / lint-gated* exit and the NumPy shim. Read this section as a plan.
+
+There is **no `.magnitude`** (this part is built). The value stores one private canonical magnitude; the *proposed* public exits are *typed* and one-call:
 
 ```python
 class Quantity(Generic[U]):
@@ -147,19 +156,22 @@ Keystroke math is the proof: honest `q.inch` / `q.to(Mm)` is ~7 chars and stays 
 
 ## 4. How the three compose
 
-| Invariant | Enforced at | By |
-|---|---|---|
-| C3 — measured≠inferred, no fabrication / no raise | **origination** | Pillar A (sealed mint) + C (descent semantics) |
-| C6 — units/frames unambiguous | **propagation** | Pillar B (phantom types), mypy `--strict` |
-| C6 — origination of a wrong tag | **origination** | Pillar A seal (smart constructors are the only mint) |
-| Round-2 ergonomics / un-strippable | **bypass** | Pillar D (no `.magnitude`, `CAM001`/`CAM002`, audit) |
+| Invariant | Enforced at | By | Build status |
+|---|---|---|---|
+| C3 — measured≠inferred, no fabrication / no raise | **origination** | Pillar A (sealed mint) + C (descent semantics) | VERIFIED |
+| C6 — units/frames unambiguous | **propagation** | Pillar B (phantom types), mypy `--strict` | VERIFIED |
+| C6 — origination of a wrong tag | **origination** | Pillar A seal (smart constructors are the only mint) | VERIFIED |
+| Round-2 ergonomics / un-strippable | **bypass** | Pillar D (no `.magnitude` [built]; `CAM001`/`CAM002`, audit [not built]) | DESIGNED |
 
 ## 5. Enforcement plan (mechanism, not review)
 
-- `mypy --strict` in CI — proves the phantom-type propagation (Pillar B).
-- `ruff` custom rules `CAM001` (`unsafe_strip` sites) and `CAM002` (accessor→constructor round-trips) + `allowlist.toml` + stale-entry reaper test (Pillar D).
-- A lint/AST test that **no `Provenance.MEASURED`/`INFERRED` literal appears outside `cam_analyzer/sources/`** (moves Pillar A's invariant into CI; child idea from the deepen).
-- A conformance trap that asserts **no public callable accepts a `provenance=` parameter** (`inspect.signature` sweep) and that `Quantity(...)` without the key raises — extends the existing `tests/test_conformance_traps.py` corpus (`fabricated_nose_as_measured`, `mm_labeled_as_inch`).
+> Build-status legend: **[VERIFIED]** = a passing witness exists today;
+> **[DESIGNED]** = planned, not built.
+
+- **[VERIFIED]** `mypy --strict` proves the phantom-type propagation (Pillar B) — `tests/test_conformance_traps.py::test_phantom_types_make_unit_and_frame_errors`. (Run under `make check`; see WS-ENFORCE.)
+- **[DESIGNED]** `ruff` custom rules `CAM001` (`unsafe_strip` sites) and `CAM002` (accessor→constructor round-trips) + `allowlist.toml` + stale-entry reaper test (Pillar D). *Not built.*
+- **[VERIFIED]** A lint/AST test that **MEASURED conferral appears only in the source layer + `analysis/safety.py`** — `tests/test_conformance_traps.py::test_measured_conferral_is_confined_to_the_source_layer` (corpus trap `measured_confined_to_sources`). It flags both `measured()` **and** a MEASURED-carrying `Quantity._mint(...)` (`tests/test_conformance_traps.py:294`), closing the keyed-mint back door — so "unconstructable MEASURED" is genuinely verified.
+- **[VERIFIED]** A conformance trap that asserts **no public callable accepts a `provenance=` parameter** (`inspect.signature` sweep) and that `Quantity(...)` without the key raises — `tests/test_conformance_traps.py::test_no_public_value_factory_confers_provenance_by_argument`, `::test_quantity_unsealed_construction_is_rejected` (corpus `fabricated_nose_as_measured`, `mm_labeled_as_inch`).
 - Fixes #6 in passing: replace Protocol *subclassing* with `abc.ABC`/composition so a missing method fails at construction (sealed mints already push concrete profiles toward factories).
 
 ## 6. Risks & mitigations
