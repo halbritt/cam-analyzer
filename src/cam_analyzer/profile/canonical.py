@@ -46,6 +46,9 @@ class CanonicalLiftModel:
     lift_unit: str = "inch"
     lift_frame: str = "valve_side"
     source: str = "canonical"
+    # Opt-in: answer otherwise-refused derivatives with an EXTRAPOLATED ballpark
+    # (operator must expose approximate_derivative/max_approximate_derivative).
+    approximate_derivatives: bool = False
 
 
 @final
@@ -134,21 +137,52 @@ class CanonicalCamProfile(CamProfile):
         crank_deg = angle.require_crank()
         derivative_map = self._model.provenance.derivative_map(order)
         max_supported_order = self._model.operator.max_supported_derivative(crank_deg)
-        if max_supported_order < order:
-            return Refusal(
-                requested=f"derivative order {order} at {crank_deg:.3f} deg",
-                reason=(
-                    f"{self._model.operator.name} supports derivative order "
-                    f"{max_supported_order} at this crank angle, not order {order}"
-                ),
-                remedy="provide backing lift data with support for this derivative order",
-                provenance=derivative_map.at(crank_deg),
+        if max_supported_order >= order:
+            return ProvFloat(
+                self._model.operator.derivative(order, crank_deg),
+                unit,
+                self._model.lift_frame,
+                derivative_map.at(crank_deg),
             )
+        approximate = self._approximate_derivative_at(order, crank_deg, unit)
+        if approximate is not None:
+            return approximate
+        return Refusal(
+            requested=f"derivative order {order} at {crank_deg:.3f} deg",
+            reason=(
+                f"{self._model.operator.name} supports derivative order "
+                f"{max_supported_order} at this crank angle, not order {order}"
+            ),
+            remedy="provide backing lift data with support for this derivative order",
+            provenance=derivative_map.at(crank_deg),
+        )
+
+    def _approximate_derivative_at(
+        self, order: int, crank_deg: float, unit: str
+    ) -> ProvFloat | None:
+        """Opt-in ballpark for an unsupported derivative, always EXTRAPOLATED.
+
+        Returns ``None`` (caller then refuses) unless the model was built with
+        ``approximate_derivatives=True`` and the operator can analytically
+        approximate this order here. The value is stamped EXTRAPOLATED — it
+        describes the operator's *assumed* shape, not the cam — so it never
+        elevates derivative support: the cliff-analysis fitness gates
+        (``is_good_enough_for``/``_supports_*``) read ``max_supported_derivative``
+        and stay strict.
+        """
+        if not self._model.approximate_derivatives:
+            return None
+        max_approximate = getattr(self._model.operator, "max_approximate_derivative", None)
+        approximate_derivative = getattr(self._model.operator, "approximate_derivative", None)
+        if max_approximate is None or approximate_derivative is None:
+            return None
+        if max_approximate(crank_deg) < order:
+            return None
         return ProvFloat(
-            self._model.operator.derivative(order, crank_deg),
+            approximate_derivative(order, crank_deg),
             unit,
             self._model.lift_frame,
-            derivative_map.at(crank_deg),
+            Provenance.EXTRAPOLATED,
         )
 
     def _measured_sample_supports(self, crank_deg: float) -> bool:
