@@ -9,9 +9,11 @@ from cam_analyzer.cli import render_chart_projection_from_card_data, render_svg_
 from cam_analyzer.quantity import Angle, Inch, inferred
 from cam_analyzer.sources.cam_card import CamCard, profiles_from_cam_card
 from cam_analyzer.visualization import (
-    canonical_to_overlap_display,
-    is_primary_overlap_display_angle,
-    overlap_display_to_canonical,
+    PRIMARY_OVERLAP_RELATIVE_MAX_DEG,
+    PRIMARY_OVERLAP_RELATIVE_MIN_DEG,
+    canonical_to_overlap_relative,
+    is_primary_overlap_relative_angle,
+    overlap_relative_to_canonical,
 )
 
 _SVG_NAMESPACE = "{http://www.w3.org/2000/svg}"
@@ -46,25 +48,35 @@ def test_event_canonical_coordinates() -> None:
 
 def test_overlap_centered_projection() -> None:
     events = _known_event_coordinates()
-    display_events = {
-        event: canonical_to_overlap_display(canonical_angle)
+    relative_events = {
+        event: canonical_to_overlap_relative(canonical_angle)
         for event, canonical_angle in events.items()
     }
 
-    assert display_events["IO"] == pytest.approx(-9.5)
-    assert display_events["EC"] == pytest.approx(18.5)
-    assert is_primary_overlap_display_angle(display_events["IO"])
-    assert is_primary_overlap_display_angle(display_events["EC"])
-    assert display_events["IC"] == pytest.approx(228.5)
-    assert display_events["EO"] == pytest.approx(-227.5)
-    assert not is_primary_overlap_display_angle(display_events["IC"])
-    assert not is_primary_overlap_display_angle(display_events["EO"])
+    assert relative_events["EO"] == pytest.approx(-227.5)
+    assert relative_events["IO"] == pytest.approx(-9.5)
+    assert relative_events["EC"] == pytest.approx(18.5)
+    assert relative_events["IC"] == pytest.approx(228.5)
+    assert all(is_primary_overlap_relative_angle(angle) for angle in relative_events.values())
+
+
+def test_primary_view_is_full_cycle_overlap_relative() -> None:
+    projection = _projection()
+    sample_degrees = tuple(float(degrees) for degrees in projection["sample_degrees"])
+    relative_degrees = tuple(canonical_to_overlap_relative(degrees) for degrees in sample_degrees)
+
+    assert PRIMARY_OVERLAP_RELATIVE_MIN_DEG == pytest.approx(-360.0)
+    assert PRIMARY_OVERLAP_RELATIVE_MAX_DEG == pytest.approx(360.0)
+    assert PRIMARY_OVERLAP_RELATIVE_MAX_DEG - PRIMARY_OVERLAP_RELATIVE_MIN_DEG == pytest.approx(720.0)
+    assert min(sample_degrees) == pytest.approx(0.0)
+    assert max(sample_degrees) == pytest.approx(720.0)
+    assert len(relative_degrees) == len(sample_degrees)
 
 
 def test_overlap_duration_050() -> None:
     events = _known_event_coordinates()
-    overlap_start = canonical_to_overlap_display(events["IO"])
-    overlap_end = canonical_to_overlap_display(events["EC"])
+    overlap_start = canonical_to_overlap_relative(events["IO"])
+    overlap_end = canonical_to_overlap_relative(events["EC"])
 
     assert overlap_start == pytest.approx(-9.5)
     assert overlap_end == pytest.approx(18.5)
@@ -76,23 +88,29 @@ def test_primary_view_contains_overlap_events() -> None:
     primary_events = _primary_event_elements(root)
     overlap_band = _overlap_band_element(root)
 
-    assert primary_events["IO"].attrib["data-display-angle-deg"] == "-9.5"
+    assert set(primary_events) == {"EO", "IO", "EC", "IC"}
+    assert primary_events["EO"].attrib["data-overlap-relative-angle-deg"] == "-227.5"
+    assert primary_events["EO"].attrib["data-canonical-angle-deg"] == "492.5"
+    assert primary_events["IO"].attrib["data-overlap-relative-angle-deg"] == "-9.5"
     assert primary_events["IO"].attrib["data-canonical-angle-deg"] == "710.5"
-    assert primary_events["EC"].attrib["data-display-angle-deg"] == "18.5"
+    assert primary_events["EC"].attrib["data-overlap-relative-angle-deg"] == "18.5"
     assert primary_events["EC"].attrib["data-canonical-angle-deg"] == "18.5"
-    assert float(overlap_band.attrib["data-display-start-deg"]) == pytest.approx(-9.5)
-    assert float(overlap_band.attrib["data-display-end-deg"]) == pytest.approx(18.5)
-    assert float(overlap_band.attrib["data-display-start-deg"]) < 0.0
-    assert float(overlap_band.attrib["data-display-end-deg"]) > 0.0
+    assert primary_events["IC"].attrib["data-overlap-relative-angle-deg"] == "228.5"
+    assert primary_events["IC"].attrib["data-canonical-angle-deg"] == "228.5"
+    assert float(overlap_band.attrib["data-overlap-start-deg"]) == pytest.approx(-9.5)
+    assert float(overlap_band.attrib["data-overlap-end-deg"]) == pytest.approx(18.5)
+    assert float(overlap_band.attrib["data-overlap-start-deg"]) < 0.0
+    assert float(overlap_band.attrib["data-overlap-end-deg"]) > 0.0
 
 
-def test_primary_view_excludes_non_overlap_events() -> None:
+def test_primary_view_does_not_label_card_offsets_as_relative_angles() -> None:
     svg = _svg_text()
     primary_events = _primary_event_elements(ET.fromstring(svg))
 
-    assert set(primary_events) == {"IO", "EC"}
     assert "IC @ 0.050 in +48.5" not in svg
     assert "EO @ 0.050 in -47.5" not in svg
+    assert primary_events["IC"].attrib["data-overlap-relative-angle-deg"] == "228.5"
+    assert primary_events["EO"].attrib["data-overlap-relative-angle-deg"] == "-227.5"
 
 
 def test_no_shifted_coordinates_in_labels() -> None:
@@ -110,12 +128,12 @@ def test_lift_crossings_at_050() -> None:
     intake_open = max(degrees for degrees in intake_events if degrees > 540.0)
     exhaust_close = min(degrees for degrees in exhaust_events if degrees < 180.0)
 
-    assert canonical_to_overlap_display(intake_open) == pytest.approx(-9.5, abs=0.001)
+    assert canonical_to_overlap_relative(intake_open) == pytest.approx(-9.5, abs=0.001)
     assert float(profiles.intake.lift_at(Angle.crank(intake_open))) == pytest.approx(
         _CHECKING_LIFT_IN,
         abs=0.001,
     )
-    assert canonical_to_overlap_display(exhaust_close) == pytest.approx(18.5, abs=0.001)
+    assert canonical_to_overlap_relative(exhaust_close) == pytest.approx(18.5, abs=0.001)
     assert float(profiles.exhaust.lift_at(Angle.crank(exhaust_close))) == pytest.approx(
         _CHECKING_LIFT_IN,
         abs=0.001,
@@ -140,13 +158,39 @@ def test_axis_label_semantics() -> None:
     assert "Crank angle relative to TDC overlap (deg)" in svg
     assert "Overlap-centered crank window (deg; 180 = TDC overlap)" not in svg
     assert "Primary engineering view: 0-360" not in svg
+    assert "Primary engineering view: -180 to +180" not in svg
+    assert "Primary engineering view: -360 to +360 crank degrees" in svg
 
 
 def test_projection_round_trip() -> None:
     for canonical_angle in _known_event_coordinates().values():
-        display_angle = canonical_to_overlap_display(canonical_angle)
+        relative_angle = canonical_to_overlap_relative(canonical_angle)
 
-        assert overlap_display_to_canonical(display_angle) == pytest.approx(canonical_angle % 720.0)
+        assert overlap_relative_to_canonical(relative_angle) == pytest.approx(canonical_angle % 720.0)
+
+
+def test_primary_and_secondary_use_equivalent_lift_samples() -> None:
+    projection = _projection()
+    for profile in projection["profiles"]:
+        assert isinstance(profile, dict)
+        lift_series = profile["series"]["lift"]
+        assert isinstance(lift_series, dict)
+        samples = lift_series["samples"]
+        assert isinstance(samples, list)
+        secondary_values = {
+            float(sample["crank_deg"]): sample["answer"]["value"]
+            for sample in samples
+            if isinstance(sample, dict) and isinstance(sample.get("answer"), dict)
+        }
+        primary_values = {
+            (canonical_to_overlap_relative(canonical_angle), canonical_angle): value
+            for canonical_angle, value in secondary_values.items()
+        }
+
+        assert len(primary_values) == len(secondary_values)
+        for (relative_angle, canonical_angle), primary_value in primary_values.items():
+            assert is_primary_overlap_relative_angle(relative_angle)
+            assert primary_value == secondary_values[canonical_angle]
 
 
 def _known_event_coordinates() -> dict[str, float]:

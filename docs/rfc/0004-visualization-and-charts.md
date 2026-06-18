@@ -53,10 +53,11 @@ The implemented slice is **static projection plus an overlap-centered static SVA
 (§3.3): sampled C5 answers, refusals, segmented series, a provenance legend that a
 renderer may consume but may not upgrade, threshold-duration tables, profile-quality
 warnings, provenance-scaled p50/p95 confidence bands, and a dependency-free static
-lift/velocity/acceleration/jerk stack. The primary x-axis is a -180° to +180°
-overlap-centered view with 0° marked as TDC overlap, with hard @0.050 event
-markers inside that window, threshold lines, overlap summaries, validation
-warnings, and a compact secondary 720° overview that carries off-window events.
+lift/velocity/acceleration/jerk stack. The primary x-axis is a full-cycle
+-360° to +360° overlap-relative view with 0° marked as TDC overlap, with hard
+@0.050 event markers projected from canonical crank angles, threshold lines,
+overlap summaries, validation warnings, and a compact secondary canonical
+0° to 720° overview from the same source samples.
 ECharts server-side SVG
 and the identical spec in a future browser remain the intended richer rendering path,
 not built output.
@@ -183,9 +184,9 @@ see the risk in §5 and the band-math open question in §7.
   jerk) sharing one crank-angle X-axis, RPM-independent angle-based units
   (in, in/deg, in/deg², in/deg³). The accel panel shows the characteristic
   positive→negative→positive three-pulse shape (where the spring, not the cam, must
-  reverse the valvetrain). The implemented static SVG makes the overlap-centered
-  -180° to +180° view primary, with 0° as TDC overlap, and keeps lift as the visual hero; velocity,
-  acceleration, and jerk are supporting panels on the same x-axis. Each panel obeys
+  reverse the valvetrain). The implemented static SVG makes the full-cycle
+  overlap-centered -360° to +360° view primary, with 0° as TDC overlap, and keeps
+  lift as the visual hero; velocity, acceleration, and jerk are supporting panels on the same x-axis. Each panel obeys
   §3.1.3's ceiling, so the lower panels are visibly less-trusted.
 - **Valve-lift overlay** — intake (blue) + exhaust (red/orange) over the full 720°
   cycle as a secondary overview, with 0° = TDC overlap in the primary view, the
@@ -299,8 +300,9 @@ measurement that would change that.*
   and `tests/test_visualization_grammar.py::test_style_legend_for_json_serializes_the_single_style_table`.
 - **[VERIFIED]** *Overlap-centered static SVAJ SVG:* `cam-analyze --charts svg` emits a
   dependency-free lift/velocity/acceleration/jerk SVG from the same source-blind
-  projection, confidence bands, hard @0.050 event markers, threshold lines, summary
-  panel, validation section, secondary 720° overview, and provenance legend. Witness:
+  projection, full-cycle -360° to +360° primary view, confidence bands, hard
+  @0.050 event markers, threshold lines, summary panel, validation section,
+  secondary canonical 0° to 720° overview, and provenance legend. Witness:
   `tests/test_visualization_svg.py` and
   `tests/test_cli.py::test_main_with_reference_flag_can_print_svg_chart`.
 - **[VERIFIED]** *Threshold durations and quality warnings:* the projection and

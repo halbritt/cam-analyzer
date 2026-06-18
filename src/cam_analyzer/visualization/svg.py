@@ -10,10 +10,11 @@ from typing import cast
 
 from cam_analyzer.visualization.coordinates import (
     CYCLE_DEGREES,
-    PRIMARY_DISPLAY_MAX_DEG,
-    PRIMARY_DISPLAY_MIN_DEG,
-    canonical_to_overlap_display,
-    is_primary_overlap_display_angle,
+    PRIMARY_OVERLAP_RELATIVE_MAX_DEG,
+    PRIMARY_OVERLAP_RELATIVE_MIN_DEG,
+    canonical_to_overlap_relative,
+    is_primary_overlap_relative_angle,
+    overlap_relative_to_canonical,
 )
 
 _SVG_WIDTH = 1536.0
@@ -23,8 +24,8 @@ _STACK_WIDTH = 1024.0
 _SUMMARY_LEFT = 1150.0
 _SUMMARY_WIDTH = 342.0
 _CYCLE_DEGREES = CYCLE_DEGREES
-_MAIN_X_MIN = PRIMARY_DISPLAY_MIN_DEG
-_MAIN_X_MAX = PRIMARY_DISPLAY_MAX_DEG
+_MAIN_X_MIN = PRIMARY_OVERLAP_RELATIVE_MIN_DEG
+_MAIN_X_MAX = PRIMARY_OVERLAP_RELATIVE_MAX_DEG
 _TDC_DISPLAY_DEG = 0.0
 _LIFT_TOP = 92.0
 _LIFT_HEIGHT = 300.0
@@ -62,8 +63,9 @@ class _Panel:
 
 @dataclass(frozen=True, slots=True)
 class _Point:
+    sample_index: int
     canonical_angle_deg: float
-    display_angle_deg: float
+    overlap_relative_angle_deg: float
     y_value: float
     p50_half_width: float | None = None
     p95_half_width: float | None = None
@@ -86,7 +88,7 @@ class _ProfileSeries:
 class _TimingEvent:
     code: str
     canonical_angle_deg: float
-    display_angle_deg: float
+    overlap_relative_angle_deg: float
     label: str
     color: str
     anchor: str
@@ -110,8 +112,8 @@ class _ProfileMetrics:
 @dataclass(frozen=True, slots=True)
 class _OverlapBand:
     lift_in: float
-    start_display_angle_deg: float
-    end_display_angle_deg: float
+    start_overlap_relative_angle_deg: float
+    end_overlap_relative_angle_deg: float
     degrees: float
 
 
@@ -130,8 +132,8 @@ def render_valve_lift_svg(
     """Render the projection as an overlap-centered engineering SVAJ SVG."""
 
     legend = _mapping_field(projection, "provenance_legend")
-    lift_profiles = _profiles_for_query(projection, "lift", centered=True)
-    full_lift_profiles = _profiles_for_query(projection, "lift", centered=False)
+    full_lift_profiles = _profiles_for_query(projection, "lift")
+    lift_profiles = _overlap_relative_profiles(full_lift_profiles)
     y_max = _nice_lift_max(_max_y(full_lift_profiles))
     overlap_rows = _overlap_rows(projection)
     overlap_band = _overlap_band(projection)
@@ -139,6 +141,13 @@ def render_valve_lift_svg(
     full_cycle_events = _full_cycle_timing_events(projection)
     profile_metrics = _profile_metrics(projection)
     warnings = _validation_warnings(projection, profile_metrics)
+    _verify_projection_contract(
+        primary_profiles=lift_profiles,
+        secondary_profiles=full_lift_profiles,
+        timing_events=timing_events,
+        full_cycle_events=full_cycle_events,
+        overlap_band=overlap_band,
+    )
 
     svg_parts = _svg_header(title)
     svg_parts.extend(_lift_panel_svg(lift_profiles, legend, y_max, timing_events, overlap_rows, overlap_band))
@@ -153,8 +162,6 @@ def render_valve_lift_svg(
 def _profiles_for_query(
     projection: Mapping[str, object],
     query: str,
-    *,
-    centered: bool,
 ) -> tuple[_ProfileSeries, ...]:
     profiles = []
     for index, raw_profile in enumerate(_sequence_field(projection, "profiles")):
@@ -166,7 +173,7 @@ def _profiles_for_query(
             _ProfileSeries(
                 name=name,
                 color=color,
-                segments=_series_segments(series, centered=centered),
+                segments=_series_segments(series),
             )
         )
     if not profiles:
@@ -174,17 +181,13 @@ def _profiles_for_query(
     return tuple(profiles)
 
 
-def _series_segments(
-    series: Mapping[str, object],
-    *,
-    centered: bool,
-) -> tuple[_SeriesSegment, ...]:
+def _series_segments(series: Mapping[str, object]) -> tuple[_SeriesSegment, ...]:
     segments = []
     for raw_segment in _sequence_field(series, "segments"):
         segment = _as_mapping(raw_segment, "series segment")
         if not _bool_field(segment, "draw_line"):
             continue
-        points = tuple(_segment_points(segment, centered=centered))
+        points = tuple(_segment_points(segment))
         if points:
             segments.append(
                 _SeriesSegment(
@@ -197,11 +200,7 @@ def _series_segments(
     return tuple(segments)
 
 
-def _segment_points(
-    segment: Mapping[str, object],
-    *,
-    centered: bool,
-) -> tuple[_Point, ...]:
+def _segment_points(segment: Mapping[str, object]) -> tuple[_Point, ...]:
     points = []
     for raw_point in _sequence_field(segment, "points"):
         point = _as_mapping(raw_point, "segment point")
@@ -209,21 +208,43 @@ def _segment_points(
         if not isinstance(raw_y, int | float):
             continue
         canonical_angle_deg = _float_field(point, "crank_deg")
-        display_angle_deg = _display_deg(canonical_angle_deg)
-        if centered and not _in_centered_window(display_angle_deg):
-            continue
+        overlap_relative_angle_deg = _overlap_relative_deg(canonical_angle_deg)
         points.append(
             _Point(
+                sample_index=_int_field(point, "sample_index"),
                 canonical_angle_deg=canonical_angle_deg,
-                display_angle_deg=display_angle_deg,
+                overlap_relative_angle_deg=overlap_relative_angle_deg,
                 y_value=float(raw_y),
                 p50_half_width=_confidence_half_width(point, "p50_half_width"),
                 p95_half_width=_confidence_half_width(point, "p95_half_width"),
             )
         )
-    if centered:
-        return tuple(sorted(points, key=lambda candidate: candidate.display_angle_deg))
     return tuple(sorted(points, key=lambda candidate: candidate.canonical_angle_deg))
+
+
+def _overlap_relative_profiles(profiles: Sequence[_ProfileSeries]) -> tuple[_ProfileSeries, ...]:
+    return tuple(
+        _ProfileSeries(
+            name=profile.name,
+            color=profile.color,
+            segments=tuple(
+                _SeriesSegment(
+                    provenance=segment.provenance,
+                    points=tuple(
+                        sorted(
+                            segment.points,
+                            key=lambda candidate: (
+                                candidate.overlap_relative_angle_deg,
+                                candidate.canonical_angle_deg,
+                            ),
+                        )
+                    ),
+                )
+                for segment in profile.segments
+            ),
+        )
+        for profile in profiles
+    )
 
 
 def _svg_header(title: str) -> list[str]:
@@ -238,7 +259,7 @@ def _svg_header(title: str) -> list[str]:
         f'<text x="24" y="38" font-family="Arial, sans-serif" font-size="28" '
         f'font-weight="700" fill="#0f172a">{safe_title}</text>',
         '<text x="24" y="64" font-family="Arial, sans-serif" font-size="14" '
-        'fill="#475569">Primary engineering view: -180 to +180 crank degrees; 0 = TDC overlap</text>',
+        'fill="#475569">Primary engineering view: -360 to +360 crank degrees; 0 = TDC overlap</text>',
     ]
 
 
@@ -277,8 +298,8 @@ def _derivative_stack_svg(
     }
     parts: list[str] = []
     for query, panel in panels.items():
-        profiles = _profiles_for_query(projection, query, centered=True)
-        range_profiles = _profiles_for_query(projection, query, centered=False)
+        range_profiles = _profiles_for_query(projection, query)
+        profiles = _overlap_relative_profiles(range_profiles)
         y_min, y_max = _symmetric_range(range_profiles)
         parts.extend(_panel_frame_svg(panel, _series_label(query)))
         parts.extend(_x_grid_svg(panel, major=False))
@@ -376,7 +397,7 @@ def _legend_svg(legend: Mapping[str, object], schema: str) -> list[str]:
         '<text x="40" y="924" font-family="Arial, sans-serif" font-size="12" fill="#1e293b">'
         'Peak lift 0.360 in, cold lash 0.006/0.008 in</text>',
         '<text x="40" y="944" font-family="Arial, sans-serif" font-size="12" fill="#1e293b">'
-        'Primary view: -180 to +180, 0 = TDC overlap</text>',
+        'Primary view: -360 to +360, 0 = TDC overlap</text>',
         '<rect x="396" y="856" width="520" height="118" rx="6" fill="#ffffff" stroke="#cbd5e1"/>',
         '<text x="412" y="880" font-family="Arial, sans-serif" font-size="13" font-weight="700" '
         'fill="#0f172a">Legend / Provenance</text>',
@@ -472,14 +493,14 @@ def _threshold_lines_svg(panel: _Panel, y_max: float) -> list[str]:
 
 
 def _overlap_band_svg(panel: _Panel, overlap_band: _OverlapBand) -> list[str]:
-    x_left = _x_px(overlap_band.start_display_angle_deg)
-    width = _x_px(overlap_band.end_display_angle_deg) - x_left
+    x_left = _x_px(overlap_band.start_overlap_relative_angle_deg)
+    width = _x_px(overlap_band.end_overlap_relative_angle_deg) - x_left
     return [
         f'<rect x="{x_left:.2f}" y="{panel.top:.0f}" width="{width:.2f}" height="{panel.height:.0f}" '
         'fill="#e2e8f0" fill-opacity="0.55" stroke="none" '
         f'data-overlap-threshold="{overlap_band.lift_in:.3f}" '
-        f'data-display-start-deg="{overlap_band.start_display_angle_deg:.1f}" '
-        f'data-display-end-deg="{overlap_band.end_display_angle_deg:.1f}"/>',
+        f'data-overlap-start-deg="{overlap_band.start_overlap_relative_angle_deg:.1f}" '
+        f'data-overlap-end-deg="{overlap_band.end_overlap_relative_angle_deg:.1f}"/>',
         f'<text x="{_x_px(_TDC_DISPLAY_DEG):.2f}" y="{panel.top + 32:.0f}" text-anchor="middle" '
         'font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0f172a">'
         f'OVERLAP @ 0.050 in</text>',
@@ -492,13 +513,13 @@ def _overlap_band_svg(panel: _Panel, overlap_band: _OverlapBand) -> list[str]:
 def _timing_event_svg(events: Sequence[_TimingEvent], panel: _Panel) -> list[str]:
     parts = []
     for event in events:
-        x_pos = _x_px(event.display_angle_deg)
+        x_pos = _x_px(event.overlap_relative_angle_deg)
         parts.append(
             f'<line x1="{x_pos:.2f}" y1="{panel.top:.0f}" x2="{x_pos:.2f}" '
             f'y2="{panel.top + panel.height:.0f}" stroke="{event.color}" stroke-width="1.3" '
             f'stroke-dasharray="5 5" data-primary-event="{event.code}" '
             f'data-canonical-angle-deg="{event.canonical_angle_deg:.1f}" '
-            f'data-display-angle-deg="{event.display_angle_deg:.1f}"/>'
+            f'data-overlap-relative-angle-deg="{event.overlap_relative_angle_deg:.1f}"/>'
         )
         text_y = panel.top + (88.0 if event.anchor == "top" else panel.height - 18.0)
         parts.append(
@@ -731,7 +752,7 @@ def _legend_notes_svg() -> list[str]:
         "Solid/dashed/dotted = measured/inferred/extrapolated",
         "Bands show 95% and 50% confidence",
         "Dashed markers are hard @0.050 in crossings",
-        "720 overview carries off-window events",
+        "720 overview uses the same canonical samples",
     )
     return [
         f'<text x="956" y="{902 + index * 15:.0f}" font-family="Arial, sans-serif" '
@@ -744,19 +765,35 @@ def _timing_events(projection: Mapping[str, object]) -> tuple[_TimingEvent, ...]
     events = _hard_timing_event_degrees(projection)
     return (
         _TimingEvent(
+            "EO",
+            events["EO"],
+            _overlap_relative_deg(events["EO"]),
+            f'EO @ 0.050 in {_overlap_relative_deg(events["EO"]):+.1f} deg',
+            "#dc2626",
+            "top",
+        ),
+        _TimingEvent(
             "IO",
             events["IO"],
-            _display_deg(events["IO"]),
-            f'IO @ 0.050 in {_display_deg(events["IO"]):+.1f} deg',
+            _overlap_relative_deg(events["IO"]),
+            f'IO @ 0.050 in {_overlap_relative_deg(events["IO"]):+.1f} deg',
             "#2563eb",
             "top",
         ),
         _TimingEvent(
             "EC",
             events["EC"],
-            _display_deg(events["EC"]),
-            f'EC @ 0.050 in {_display_deg(events["EC"]):+.1f} deg',
+            _overlap_relative_deg(events["EC"]),
+            f'EC @ 0.050 in {_overlap_relative_deg(events["EC"]):+.1f} deg',
             "#dc2626",
+            "bottom",
+        ),
+        _TimingEvent(
+            "IC",
+            events["IC"],
+            _overlap_relative_deg(events["IC"]),
+            f'IC @ 0.050 in {_overlap_relative_deg(events["IC"]):+.1f} deg',
+            "#2563eb",
             "bottom",
         ),
     )
@@ -769,6 +806,114 @@ def _full_cycle_timing_events(projection: Mapping[str, object]) -> tuple[_FullCy
         _FullCycleEvent("IC", events["IC"], "#2563eb"),
         _FullCycleEvent("EO", events["EO"], "#dc2626"),
         _FullCycleEvent("EC", events["EC"], "#dc2626"),
+    )
+
+
+def _verify_projection_contract(
+    *,
+    primary_profiles: Sequence[_ProfileSeries],
+    secondary_profiles: Sequence[_ProfileSeries],
+    timing_events: Sequence[_TimingEvent],
+    full_cycle_events: Sequence[_FullCycleEvent],
+    overlap_band: _OverlapBand,
+) -> None:
+    errors: list[str] = []
+    if not math.isclose(_MAIN_X_MIN, -360.0, abs_tol=1e-9):
+        errors.append("primary x-min must be -360 deg")
+    if not math.isclose(_MAIN_X_MAX, 360.0, abs_tol=1e-9):
+        errors.append("primary x-max must be +360 deg")
+    if not math.isclose(_MAIN_X_MAX - _MAIN_X_MIN, _CYCLE_DEGREES, abs_tol=1e-9):
+        errors.append("primary view must span one full 720 deg cycle")
+
+    primary_events = {event.code: event for event in timing_events}
+    secondary_events = {event.code: event for event in full_cycle_events}
+    for code in ("EO", "IO", "EC", "IC"):
+        primary_event = primary_events.get(code)
+        secondary_event = secondary_events.get(code)
+        if primary_event is None:
+            errors.append(f"primary event {code} is missing")
+            continue
+        if secondary_event is None:
+            errors.append(f"secondary event {code} is missing")
+            continue
+        expected_relative = _overlap_relative_deg(primary_event.canonical_angle_deg)
+        if not math.isclose(
+            primary_event.overlap_relative_angle_deg,
+            expected_relative,
+            abs_tol=1e-9,
+        ):
+            errors.append(f"primary event {code} relative angle does not project from canonical angle")
+        round_trip_canonical = overlap_relative_to_canonical(primary_event.overlap_relative_angle_deg)
+        if not math.isclose(
+            round_trip_canonical,
+            primary_event.canonical_angle_deg % _CYCLE_DEGREES,
+            abs_tol=1e-9,
+        ):
+            errors.append(f"primary event {code} relative angle does not round trip to canonical angle")
+        if not _in_primary_window(primary_event.overlap_relative_angle_deg):
+            errors.append(f"primary event {code} is outside the full-cycle primary view")
+        if not math.isclose(
+            primary_event.canonical_angle_deg,
+            secondary_event.canonical_angle_deg,
+            abs_tol=1e-9,
+        ):
+            errors.append(f"event {code} canonical angle differs between primary and secondary views")
+
+    io_event = primary_events.get("IO")
+    ec_event = primary_events.get("EC")
+    if io_event is not None and ec_event is not None:
+        if not math.isclose(
+            overlap_band.start_overlap_relative_angle_deg,
+            io_event.overlap_relative_angle_deg,
+            abs_tol=1e-9,
+        ):
+            errors.append("overlap band must start at the IO @0.050 event")
+        if not math.isclose(
+            overlap_band.end_overlap_relative_angle_deg,
+            ec_event.overlap_relative_angle_deg,
+            abs_tol=1e-9,
+        ):
+            errors.append("overlap band must end at the EC @0.050 event")
+        if not (
+            overlap_band.start_overlap_relative_angle_deg
+            < _TDC_DISPLAY_DEG
+            < overlap_band.end_overlap_relative_angle_deg
+        ):
+            errors.append("overlap band must straddle TDC overlap")
+        expected_overlap = (
+            overlap_band.end_overlap_relative_angle_deg
+            - overlap_band.start_overlap_relative_angle_deg
+        )
+        if not math.isclose(overlap_band.degrees, expected_overlap, abs_tol=1e-9):
+            errors.append("overlap duration must equal overlap end minus start")
+
+    if _profile_sample_signatures(primary_profiles) != _profile_sample_signatures(secondary_profiles):
+        errors.append("primary and secondary plots must use identical canonical source samples")
+
+    if errors:
+        raise ValueError("projection verification failed: " + "; ".join(errors))
+
+
+def _profile_sample_signatures(
+    profiles: Sequence[_ProfileSeries],
+) -> tuple[tuple[str, tuple[tuple[str, int, float, float], ...]], ...]:
+    return tuple(
+        (
+            profile.name,
+            tuple(
+                sorted(
+                    (
+                        segment.provenance,
+                        point.sample_index,
+                        point.canonical_angle_deg,
+                        point.y_value,
+                    )
+                    for segment in profile.segments
+                    for point in segment.points
+                )
+            ),
+        )
+        for profile in profiles
     )
 
 
@@ -826,13 +971,13 @@ def _overlap_rows(projection: Mapping[str, object]) -> tuple[_OverlapRow, ...]:
 
 def _overlap_band(projection: Mapping[str, object]) -> _OverlapBand:
     events = _hard_timing_event_degrees(projection)
-    start_display_angle = _display_deg(events["IO"])
-    end_display_angle = _display_deg(events["EC"])
+    start_overlap_relative_angle = _overlap_relative_deg(events["IO"])
+    end_overlap_relative_angle = _overlap_relative_deg(events["EC"])
     return _OverlapBand(
         lift_in=0.050,
-        start_display_angle_deg=start_display_angle,
-        end_display_angle_deg=end_display_angle,
-        degrees=end_display_angle - start_display_angle,
+        start_overlap_relative_angle_deg=start_overlap_relative_angle,
+        end_overlap_relative_angle_deg=end_overlap_relative_angle,
+        degrees=end_overlap_relative_angle - start_overlap_relative_angle,
     )
 
 
@@ -938,7 +1083,7 @@ def _path_data(
 ) -> str:
     commands = [
         f"{'M' if index == 0 else 'L'} "
-        f"{(_full_x_px(point.canonical_angle_deg) if full_cycle else _x_px(point.display_angle_deg)):.2f} "
+        f"{(_full_x_px(point.canonical_angle_deg) if full_cycle else _x_px(point.overlap_relative_angle_deg)):.2f} "
         f"{_y_px(point.y_value, y_min, y_max, panel):.2f}"
         for index, point in enumerate(points)
     ]
@@ -961,24 +1106,24 @@ def _band_path_data(
     if len(band_points) < 2:
         return ""
     upper = [
-        f"{'M' if index == 0 else 'L'} {_x_px(point.display_angle_deg):.2f} "
+        f"{'M' if index == 0 else 'L'} {_x_px(point.overlap_relative_angle_deg):.2f} "
         f"{_y_px(point.y_value + half_width, y_min, y_max, panel):.2f}"
         for index, (point, half_width) in enumerate(band_points)
     ]
     lower = [
-        f"L {_x_px(point.display_angle_deg):.2f} "
+        f"L {_x_px(point.overlap_relative_angle_deg):.2f} "
         f"{_y_px(point.y_value - half_width, y_min, y_max, panel):.2f}"
         for point, half_width in reversed(band_points)
     ]
     return " ".join((*upper, *lower, "Z"))
 
 
-def _display_deg(crank_deg: float) -> float:
-    return canonical_to_overlap_display(crank_deg)
+def _overlap_relative_deg(crank_deg: float) -> float:
+    return canonical_to_overlap_relative(crank_deg)
 
 
-def _in_centered_window(display_deg: float) -> bool:
-    return is_primary_overlap_display_angle(display_deg)
+def _in_primary_window(overlap_relative_deg: float) -> bool:
+    return is_primary_overlap_relative_angle(overlap_relative_deg)
 
 
 def _x_px(display_deg: float) -> float:
@@ -1131,6 +1276,13 @@ def _float_field(row: Mapping[str, object], key: str) -> float:
     if not isinstance(raw, int | float):
         raise ValueError(f"{key} must be a number")
     return float(raw)
+
+
+def _int_field(row: Mapping[str, object], key: str) -> int:
+    raw = row.get(key)
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError(f"{key} must be an integer")
+    return raw
 
 
 def _bool_field(row: Mapping[str, object], key: str) -> bool:
