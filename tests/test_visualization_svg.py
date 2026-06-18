@@ -44,13 +44,14 @@ def test_valve_lift_svg_uses_projection_provenance_styles() -> None:
     assert 'stroke-dasharray="7 5"' in svg
     assert 'stroke-dasharray="1 6"' in svg
     assert "cam_analyzer.visualization_projection.v1" in svg
-    assert "-180" in svg
-    assert "+180" in svg
-    assert "0 TDC" in svg
-    assert "IO @ 0.050 in -9.5" in svg
-    assert "IC @ 0.050 in +48.5" in svg
-    assert "EO @ 0.050 in -47.5" in svg
-    assert "EC @ 0.050 in +18.5" in svg
+    assert "Primary engineering view: 0-360 crank-degree overlap window" in svg
+    assert "180 TDC" in svg
+    assert "IO @ 0.050 in 170.5 deg" in svg
+    assert "EC @ 0.050 in 198.5 deg" in svg
+    assert 'data-event="IO"' in svg
+    assert 'data-event="IC"' in svg
+    assert 'data-event="EO"' in svg
+    assert 'data-event="EC"' in svg
     assert "0.001" in svg
     assert "0.006" in svg
     assert "0.020" in svg
@@ -100,6 +101,43 @@ def test_valve_lift_svg_footer_does_not_overlap_provenance_legend() -> None:
     undecidable_y = _text_baseline(svg, "UNDECIDABLE")
     footer_y = _text_baseline(svg, "Projection:")
     assert footer_y >= undecidable_y + 24.0
+
+
+def test_valve_lift_svg_keeps_how_to_read_notes_inside_bottom_panel() -> None:
+    projection = json.loads(
+        render_chart_projection_from_card_data(
+            {
+                "title": "Test card",
+                "intake": {
+                    "valve_lift_in": 0.360,
+                    "advertised_duration_deg": 262.0,
+                    "duration_050_deg": 238.0,
+                    "lobe_center_deg": 109.5,
+                    "lash_in": 0.006,
+                },
+                "exhaust": {
+                    "valve_lift_in": 0.360,
+                    "advertised_duration_deg": 270.0,
+                    "duration_050_deg": 246.0,
+                    "lobe_center_deg": 104.5,
+                    "lash_in": 0.008,
+                },
+            },
+            approximate_derivatives=False,
+            chart_step_deg=30.0,
+        )
+    )
+
+    svg = render_valve_lift_svg(projection, title="Test cam")
+
+    root = ET.fromstring(svg)
+    how_to_note_baselines = [
+        float(text_element.attrib["y"])
+        for text_element in root.iter(f"{_SVG_NAMESPACE}text")
+        if text_element.attrib.get("x") == "956" and "".join(text_element.itertext()).startswith("- ")
+    ]
+    assert how_to_note_baselines
+    assert max(how_to_note_baselines) <= 966.0
 
 
 def test_valve_lift_svg_refuses_projection_without_drawable_lift_segments() -> None:

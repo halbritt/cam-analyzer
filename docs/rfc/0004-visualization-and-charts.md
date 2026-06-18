@@ -53,9 +53,10 @@ The implemented slice is **static projection plus an overlap-centered static SVA
 (§3.3): sampled C5 answers, refusals, segmented series, a provenance legend that a
 renderer may consume but may not upgrade, threshold-duration tables, profile-quality
 warnings, provenance-scaled p50/p95 confidence bands, and a dependency-free static
-lift/velocity/acceleration/jerk stack. The primary x-axis is -180° to +180° around
-TDC overlap, with hard @0.050 event markers, threshold lines, overlap summaries,
-validation warnings, and a compact secondary 720° overview. ECharts server-side SVG
+lift/velocity/acceleration/jerk stack. The primary x-axis is a 0-360° overlap
+window with 180° marked as TDC overlap, with hard @0.050 event markers inside
+that window, threshold lines, overlap summaries, validation warnings, and a compact
+secondary 720° overview that carries off-window events. ECharts server-side SVG
 and the identical spec in a future browser remain the intended richer rendering path,
 not built output.
 
@@ -182,7 +183,7 @@ see the risk in §5 and the band-math open question in §7.
   (in, in/deg, in/deg², in/deg³). The accel panel shows the characteristic
   positive→negative→positive three-pulse shape (where the spring, not the cam, must
   reverse the valvetrain). The implemented static SVG makes the overlap-centered
-  -180° to +180° view primary and keeps lift as the visual hero; velocity,
+  0-360° view primary, with 180° as TDC overlap, and keeps lift as the visual hero; velocity,
   acceleration, and jerk are supporting panels on the same x-axis. Each panel obeys
   §3.1.3's ceiling, so the lower panels are visibly less-trusted.
 - **Valve-lift overlay** — intake (blue) + exhaust (red/orange) over the full 720°

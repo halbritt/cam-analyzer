@@ -121,7 +121,10 @@ def test_render_svg_chart_from_card_data_draws_the_test_cam_lift_overlay() -> No
     assert "EXTRAPOLATED" in svg
     assert "Timing Summary (@ 0.050 in)" in svg
     assert "Overlap Summary" in svg
-    assert "IO @ 0.050 in -9.5" in svg
+    assert "Primary engineering view: 0-360 crank-degree overlap window" in svg
+    assert "IO @ 0.050 in 170.5 deg" in svg
+    assert 'data-event="IC"' in svg
+    assert 'data-event="EO"' in svg
     assert 'stroke-dasharray="7 5"' in svg
     assert 'stroke-dasharray="1 6"' in svg
     assert "Renderer draws only sampled boundary answers" in svg

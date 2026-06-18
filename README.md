@@ -30,7 +30,7 @@ finished product computes:
 | Valve-spring safety | coil-bind margin, retainer-to-guide margin, seat/open pressure, float RPM |
 | Acceleration / jerk | valvetrain dynamics from the curve's derivatives |
 | Install sensitivity | how advance/retard, lash, and deck/gasket variation move every result |
-| Reporting | Markdown summary with lift-threshold durations, quality warnings, and an install checklist; static RFC-0004 chart-projection JSON via `cam-analyze --charts json`; overlap-centered static SVAJ SVG with confidence bands, hard event markers, threshold lines, summary panel, and secondary 720° overview via `cam-analyze --charts svg` (HTML / PDF / ECharts / webapp are `DESIGNED`, not built) |
+| Reporting | Markdown summary with lift-threshold durations, quality warnings, and an install checklist; static RFC-0004 chart-projection JSON via `cam-analyze --charts json`; overlap-centered 0-360° static SVAJ SVG with confidence bands, hard event markers, threshold lines, summary panel, and secondary 720° overview via `cam-analyze --charts svg` (HTML / PDF / ECharts / webapp are `DESIGNED`, not built) |
 
 Every one of these consumes **only** the `CamProfile` query surface. None of them
 can see a `CamCard`, a PDF/CSV parser, or a measured-data file.
@@ -201,6 +201,12 @@ cam-analyze --reference --charts svg > reference-svaj.svg
 
 A committed example of that SVAJ SVG output lives at
 [`examples/wr250r-webcam-81651-reference-valve-lift.svg`](examples/wr250r-webcam-81651-reference-valve-lift.svg).
+For a raster sanity check before publishing chart changes, render and inspect the
+SVG with:
+
+```bash
+python scripts/verify_svg_layout.py examples/wr250r-webcam-81651-reference-valve-lift.svg --png /tmp/reference-svaj.png
+```
 
 Milestone 1 is implemented: the reference cam card can produce intake and exhaust
 `CamProfile` objects, run source-blind timing/overlap and approximate DCR, and
