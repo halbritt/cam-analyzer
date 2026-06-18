@@ -44,14 +44,26 @@ def test_valve_lift_svg_uses_projection_provenance_styles() -> None:
     assert 'stroke-dasharray="7 5"' in svg
     assert 'stroke-dasharray="1 6"' in svg
     assert "cam_analyzer.visualization_projection.v1" in svg
-    assert "Primary engineering view: 0-360 crank-degree overlap window" in svg
-    assert "180 TDC" in svg
-    assert "IO @ 0.050 in 170.5 deg" in svg
-    assert "EC @ 0.050 in 198.5 deg" in svg
+    assert "Primary engineering view: -180 to +180 crank degrees" in svg
+    assert "0 TDC" in svg
+    assert "Crank angle relative to TDC overlap (deg)" in svg
+    assert "IO @ 0.050 in -9.5 deg" in svg
+    assert "EC @ 0.050 in +18.5 deg" in svg
+    assert "170.5 deg" not in svg
+    assert "198.5 deg" not in svg
+    assert 'data-primary-event="IO"' in svg
+    assert 'data-primary-event="EC"' in svg
+    assert 'data-display-angle-deg="-9.5"' in svg
+    assert 'data-display-angle-deg="18.5"' in svg
+    assert 'data-overlap-threshold="0.050"' in svg
     assert 'data-event="IO"' in svg
     assert 'data-event="IC"' in svg
     assert 'data-event="EO"' in svg
     assert 'data-event="EC"' in svg
+    assert 'data-canonical-angle-deg="710.5"' in svg
+    assert 'data-canonical-angle-deg="228.5"' in svg
+    assert 'data-canonical-angle-deg="492.5"' in svg
+    assert 'data-canonical-angle-deg="18.5"' in svg
     assert "0.001" in svg
     assert "0.006" in svg
     assert "0.020" in svg

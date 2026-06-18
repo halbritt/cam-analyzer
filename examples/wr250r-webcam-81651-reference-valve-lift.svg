@@ -3,12 +3,12 @@
 <desc id="chart-desc">Overlap-centered SVAJ stack with hard cam-card events, lift thresholds, confidence bands, and source-blind profile quality.</desc>
 <rect x="0" y="0" width="1536" height="1024" fill="#ffffff"/>
 <text x="24" y="38" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#0f172a">WR250R reference (Web Cam 81-651)</text>
-<text x="24" y="64" font-family="Arial, sans-serif" font-size="14" fill="#475569">Primary engineering view: 0-360 crank-degree overlap window; 180 = TDC overlap</text>
+<text x="24" y="64" font-family="Arial, sans-serif" font-size="14" fill="#475569">Primary engineering view: -180 to +180 crank degrees; 0 = TDC overlap</text>
 <rect x="96" y="92" width="1024" height="300" fill="#ffffff" stroke="#cbd5e1"/>
 <line x1="608.00" y1="92" x2="608.00" y2="392" stroke="#64748b" stroke-width="1.2"/>
 <text x="32" y="112" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#0f172a">Lift (in)</text>
-<text x="608.00" y="110" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#334155">180 TDC</text>
-<rect x="568.18" y="92" width="79.64" height="300" fill="#e2e8f0" fill-opacity="0.55" stroke="none"/>
+<text x="608.00" y="110" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#334155">0 TDC</text>
+<rect x="580.98" y="92" width="79.64" height="300" fill="#e2e8f0" fill-opacity="0.55" stroke="none" data-overlap-threshold="0.050" data-display-start-deg="-9.5" data-display-end-deg="18.5"/>
 <text x="608.00" y="124" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0f172a">OVERLAP @ 0.050 in</text>
 <text x="608.00" y="144" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#0f172a">28.0 deg</text>
 <line x1="96" y1="391.25" x2="1120" y2="391.25" stroke="#9ca3af" stroke-dasharray="5 4" stroke-opacity="0.62"/>
@@ -28,23 +28,23 @@
 <line x1="96" y1="242.00" x2="1120" y2="242.00" stroke="#7c3aed" stroke-dasharray="5 4" stroke-opacity="0.62"/>
 <text x="1110" y="246.00" text-anchor="end" font-family="Arial, sans-serif" font-size="11" fill="#7c3aed">0.200</text>
 <line x1="96.00" y1="92" x2="96.00" y2="392" stroke="#cbd5e1"/>
-<text x="96.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">0</text>
+<text x="96.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">-180</text>
 <line x1="224.00" y1="92" x2="224.00" y2="392" stroke="#e2e8f0"/>
-<text x="224.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">45</text>
+<text x="224.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">-135</text>
 <line x1="352.00" y1="92" x2="352.00" y2="392" stroke="#cbd5e1"/>
-<text x="352.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">90</text>
+<text x="352.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">-90</text>
 <line x1="480.00" y1="92" x2="480.00" y2="392" stroke="#e2e8f0"/>
-<text x="480.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">135</text>
+<text x="480.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">-45</text>
 <line x1="608.00" y1="92" x2="608.00" y2="392" stroke="#cbd5e1"/>
-<text x="608.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">180 TDC</text>
+<text x="608.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">0 TDC</text>
 <line x1="736.00" y1="92" x2="736.00" y2="392" stroke="#e2e8f0"/>
-<text x="736.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">225</text>
+<text x="736.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">+45</text>
 <line x1="864.00" y1="92" x2="864.00" y2="392" stroke="#cbd5e1"/>
-<text x="864.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">270</text>
+<text x="864.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">+90</text>
 <line x1="992.00" y1="92" x2="992.00" y2="392" stroke="#e2e8f0"/>
-<text x="992.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">315</text>
+<text x="992.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">+135</text>
 <line x1="1120.00" y1="92" x2="1120.00" y2="392" stroke="#cbd5e1"/>
-<text x="1120.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">360</text>
+<text x="1120.00" y="412" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#334155">+180</text>
 <line x1="96" y1="392.00" x2="1120" y2="392.00" stroke="#e2e8f0"/>
 <text x="82" y="396.00" text-anchor="end" font-family="Arial, sans-serif" font-size="10" fill="#334155">0.000</text>
 <line x1="96" y1="242.00" x2="1120" y2="242.00" stroke="#e2e8f0"/>
@@ -81,11 +81,11 @@
 <path d="M 96.00 208.02 L 101.69 202.44 L 107.38 196.98 L 113.07 191.66 L 118.76 186.49 L 124.44 181.47 L 130.13 176.63 L 135.82 171.96 L 141.51 167.47 L 147.20 163.18 L 152.89 159.09 L 158.58 155.21 L 164.27 151.54 L 169.96 148.10 L 175.64 144.87 L 181.33 141.87 L 187.02 139.10 L 192.71 136.55 L 198.40 134.24 L 204.09 132.15 L 209.78 130.29 L 215.47 128.64 L 221.16 127.21 L 226.84 125.98 L 232.53 124.95 L 238.22 124.10 L 243.91 123.42 L 249.60 122.90 L 255.29 122.52 L 260.98 122.27 L 266.67 122.11 L 272.36 122.03 L 278.04 122.00" fill="none" stroke="#dc2626" stroke-width="2.8" stroke-opacity="0.70" stroke-dasharray="7 5" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 283.73 122.00 L 289.42 122.00 L 295.11 122.00 L 300.80 122.00 L 306.49 122.00 L 312.18 122.00 L 317.87 122.00 L 323.56 122.00 L 329.24 122.00 L 334.93 122.00" fill="none" stroke="#dc2626" stroke-width="2.8" stroke-opacity="0.45" stroke-dasharray="1 6" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 340.62 122.00 L 346.31 122.01 L 352.00 122.06 L 357.69 122.18 L 363.38 122.38 L 369.07 122.70 L 374.76 123.14 L 380.44 123.74 L 386.13 124.50 L 391.82 125.44 L 397.51 126.57 L 403.20 127.90 L 408.89 129.44 L 414.58 131.19 L 420.27 133.17 L 425.96 135.37 L 431.64 137.80 L 437.33 140.46 L 443.02 143.34 L 448.71 146.45 L 454.40 149.79 L 460.09 153.35 L 465.78 157.13 L 471.47 161.11 L 477.16 165.30 L 482.84 169.69 L 488.53 174.27 L 494.22 179.03 L 499.91 183.96 L 505.60 189.05 L 511.29 194.30 L 516.98 199.69 L 522.67 205.21 L 528.36 210.86 L 534.04 216.62 L 539.73 222.47 L 545.42 228.42 L 551.11 234.45 L 556.80 240.54 L 562.49 246.69 L 568.18 252.89 L 573.87 259.13 L 579.56 265.40 L 580.98 266.98 L 585.24 271.70 L 590.93 278.00 L 596.62 284.31 L 602.31 290.62 L 608.00 296.93" fill="none" stroke="#dc2626" stroke-width="2.8" stroke-opacity="0.70" stroke-dasharray="7 5" stroke-linecap="round" stroke-linejoin="round"/>
-<line x1="580.98" y1="92" x2="580.98" y2="392" stroke="#2563eb" stroke-width="1.3" stroke-dasharray="5 5"/>
-<text x="584.98" y="180" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#2563eb">IO @ 0.050 in 170.5 deg</text>
-<line x1="660.62" y1="92" x2="660.62" y2="392" stroke="#dc2626" stroke-width="1.3" stroke-dasharray="5 5"/>
-<text x="664.62" y="374" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#dc2626">EC @ 0.050 in 198.5 deg</text>
-<text x="608" y="434" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#0f172a">Overlap-centered crank window (deg; 180 = TDC overlap)</text>
+<line x1="580.98" y1="92" x2="580.98" y2="392" stroke="#2563eb" stroke-width="1.3" stroke-dasharray="5 5" data-primary-event="IO" data-canonical-angle-deg="710.5" data-display-angle-deg="-9.5"/>
+<text x="584.98" y="180" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#2563eb">IO @ 0.050 in -9.5 deg</text>
+<line x1="660.62" y1="92" x2="660.62" y2="392" stroke="#dc2626" stroke-width="1.3" stroke-dasharray="5 5" data-primary-event="EC" data-canonical-angle-deg="18.5" data-display-angle-deg="18.5"/>
+<text x="664.62" y="374" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#dc2626">EC @ 0.050 in +18.5 deg</text>
+<text x="608" y="434" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#0f172a">Crank angle relative to TDC overlap (deg)</text>
 <rect x="96" y="444" width="1024" height="86" fill="#ffffff" stroke="#cbd5e1"/>
 <line x1="608.00" y1="444" x2="608.00" y2="530" stroke="#64748b" stroke-width="1.2"/>
 <text x="32" y="464" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#0f172a">Velocity (in/deg)</text>
@@ -182,13 +182,13 @@
 <path d="M 796.44 833.25 L 798.58 832.42 L 801.42 831.31 L 804.27 830.19 L 807.11 829.08 L 809.96 827.96 L 812.80 826.84 L 815.64 825.71 L 818.49 824.59 L 821.33 823.45 L 824.18 822.32 L 827.02 821.18 L 829.87 820.05 L 832.71 818.91 L 835.56 817.78 L 838.40 816.65 L 841.24 815.52 L 844.09 814.40 L 846.93 813.29 L 849.78 812.19 L 852.62 811.10 L 855.47 810.02 L 858.31 808.96 L 861.16 807.91 L 864.00 806.88 L 866.84 805.88 L 869.69 804.90 L 872.53 803.94 L 875.38 803.01 L 878.22 802.10 L 881.07 801.23 L 883.91 800.39 L 886.76 799.58 L 889.60 798.81 L 892.44 798.08 L 895.29 797.38 L 898.13 796.72 L 900.98 796.10 L 903.82 795.52 L 906.67 794.98 L 909.51 794.48 L 912.36 794.02 L 915.20 793.60 L 918.04 793.23 L 920.89 792.89 L 923.73 792.60 L 926.58 792.34 L 929.42 792.12 L 932.27 791.93 L 935.11 791.78 L 937.96 791.66 L 940.80 791.56 L 943.64 791.49 L 946.49 791.45 L 949.33 791.42 L 952.18 791.41 L 955.02 791.40" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-opacity="0.70" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 957.87 791.40 L 960.71 791.40 L 963.56 791.40 L 966.40 791.40 L 969.24 791.40 L 972.09 791.40 L 974.93 791.40 L 977.78 791.40 L 980.62 791.40 L 983.47 791.40" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-opacity="0.70" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 986.31 791.40 L 989.16 791.40 L 992.00 791.41 L 994.84 791.43 L 997.69 791.47 L 1000.53 791.53 L 1003.38 791.61 L 1006.22 791.71 L 1009.07 791.85 L 1011.91 792.02 L 1014.76 792.22 L 1017.60 792.46 L 1020.44 792.74 L 1023.29 793.05 L 1026.13 793.41 L 1028.98 793.81 L 1031.82 794.24 L 1034.67 794.72 L 1037.51 795.24 L 1040.36 795.80 L 1043.20 796.40 L 1046.04 797.04 L 1048.89 797.72 L 1051.73 798.44 L 1054.58 799.19 L 1057.42 799.98 L 1060.27 800.81 L 1063.11 801.66 L 1065.96 802.55 L 1068.80 803.47 L 1071.64 804.41 L 1074.49 805.38 L 1077.33 806.38 L 1080.18 807.39 L 1083.02 808.43 L 1085.87 809.49 L 1088.71 810.56 L 1091.56 811.64 L 1094.40 812.74 L 1097.24 813.84 L 1100.09 814.96 L 1102.93 816.08 L 1105.78 817.21 L 1106.49 817.50 L 1108.62 818.35 L 1111.47 819.48 L 1114.31 820.62 L 1117.16 821.75 L 1120.00 822.89" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-opacity="0.70" stroke-linecap="round" stroke-linejoin="round"/>
-<line x1="1106.49" y1="786" x2="1106.49" y2="840" stroke="#2563eb" stroke-width="1.1" stroke-dasharray="4 4" data-event="IO"/>
+<line x1="1106.49" y1="786" x2="1106.49" y2="840" stroke="#2563eb" stroke-width="1.1" stroke-dasharray="4 4" data-event="IO" data-canonical-angle-deg="710.5"/>
 <text x="1106.49" y="797" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#2563eb">IO</text>
-<line x1="420.98" y1="786" x2="420.98" y2="840" stroke="#2563eb" stroke-width="1.1" stroke-dasharray="4 4" data-event="IC"/>
+<line x1="420.98" y1="786" x2="420.98" y2="840" stroke="#2563eb" stroke-width="1.1" stroke-dasharray="4 4" data-event="IC" data-canonical-angle-deg="228.5"/>
 <text x="420.98" y="797" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#2563eb">IC</text>
-<line x1="796.44" y1="786" x2="796.44" y2="840" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 4" data-event="EO"/>
+<line x1="796.44" y1="786" x2="796.44" y2="840" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 4" data-event="EO" data-canonical-angle-deg="492.5"/>
 <text x="796.44" y="797" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#dc2626">EO</text>
-<line x1="122.31" y1="786" x2="122.31" y2="840" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 4" data-event="EC"/>
+<line x1="122.31" y1="786" x2="122.31" y2="840" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 4" data-event="EC" data-canonical-angle-deg="18.5"/>
 <text x="122.31" y="797" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#dc2626">EC</text>
 <rect x="1150" y="92" width="342" height="748" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
 <text x="1164" y="120" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#0f172a">Timing Summary (@ 0.050 in)</text>
@@ -247,7 +247,7 @@
 <text x="40" y="880" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#0f172a">Cam Card Source</text>
 <text x="40" y="904" font-family="Arial, sans-serif" font-size="12" fill="#1e293b">Web Cam 81-651 / WR250R DOHC 4V</text>
 <text x="40" y="924" font-family="Arial, sans-serif" font-size="12" fill="#1e293b">Peak lift 0.360 in, cold lash 0.006/0.008 in</text>
-<text x="40" y="944" font-family="Arial, sans-serif" font-size="12" fill="#1e293b">Primary view: 0-360, 180 = TDC overlap</text>
+<text x="40" y="944" font-family="Arial, sans-serif" font-size="12" fill="#1e293b">Primary view: -180 to +180, 0 = TDC overlap</text>
 <rect x="396" y="856" width="520" height="118" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
 <text x="412" y="880" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#0f172a">Legend / Provenance</text>
 <line x1="420" y1="906" x2="464" y2="906" stroke="#0f172a" stroke-width="2.5" stroke-opacity="1.00" stroke-linecap="round"/>
@@ -264,7 +264,7 @@
 <text x="750" y="927" font-family="Arial, sans-serif" font-size="12" fill="#1e293b">50% band</text>
 <rect x="940" y="856" width="552" height="118" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
 <text x="956" y="880" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#0f172a">How to read</text>
-<text x="956" y="902" font-family="Arial, sans-serif" font-size="11" fill="#1e293b">- 0-360 view; 180 = TDC overlap</text>
+<text x="956" y="902" font-family="Arial, sans-serif" font-size="11" fill="#1e293b">- Negative = BTDC overlap; positive = ATDC overlap</text>
 <text x="956" y="917" font-family="Arial, sans-serif" font-size="11" fill="#1e293b">- Solid/dashed/dotted = measured/inferred/extrapolated</text>
 <text x="956" y="932" font-family="Arial, sans-serif" font-size="11" fill="#1e293b">- Bands show 95% and 50% confidence</text>
 <text x="956" y="947" font-family="Arial, sans-serif" font-size="11" fill="#1e293b">- Dashed markers are hard @0.050 in crossings</text>

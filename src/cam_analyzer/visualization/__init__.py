@@ -1,5 +1,10 @@
 """Renderer-agnostic visualization primitives."""
 
+from cam_analyzer.visualization.coordinates import (
+    canonical_to_overlap_display,
+    is_primary_overlap_display_angle,
+    overlap_display_to_canonical,
+)
 from cam_analyzer.visualization.grammar import (
     STYLE_TABLE,
     ProvenanceStyle,
@@ -21,6 +26,9 @@ __all__ = [
     "SeriesSample",
     "StyledSample",
     "StyledSegment",
+    "canonical_to_overlap_display",
+    "is_primary_overlap_display_angle",
+    "overlap_display_to_canonical",
     "render_valve_lift_svg",
     "split_series",
     "style_legend_for_json",

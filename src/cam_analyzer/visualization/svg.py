@@ -8,17 +8,24 @@ from dataclasses import dataclass
 from html import escape
 from typing import cast
 
+from cam_analyzer.visualization.coordinates import (
+    CYCLE_DEGREES,
+    PRIMARY_DISPLAY_MAX_DEG,
+    PRIMARY_DISPLAY_MIN_DEG,
+    canonical_to_overlap_display,
+    is_primary_overlap_display_angle,
+)
+
 _SVG_WIDTH = 1536.0
 _SVG_HEIGHT = 1024.0
 _STACK_LEFT = 96.0
 _STACK_WIDTH = 1024.0
 _SUMMARY_LEFT = 1150.0
 _SUMMARY_WIDTH = 342.0
-_CYCLE_DEGREES = 720.0
-_MAIN_X_MIN = 0.0
-_MAIN_X_MAX = 360.0
-_OVERLAP_WINDOW_START_DEG = 540.0
-_TDC_DISPLAY_DEG = 180.0
+_CYCLE_DEGREES = CYCLE_DEGREES
+_MAIN_X_MIN = PRIMARY_DISPLAY_MIN_DEG
+_MAIN_X_MAX = PRIMARY_DISPLAY_MAX_DEG
+_TDC_DISPLAY_DEG = 0.0
 _LIFT_TOP = 92.0
 _LIFT_HEIGHT = 300.0
 _VELOCITY_TOP = 444.0
@@ -55,8 +62,8 @@ class _Panel:
 
 @dataclass(frozen=True, slots=True)
 class _Point:
-    display_deg: float
-    crank_deg: float
+    canonical_angle_deg: float
+    display_angle_deg: float
     y_value: float
     p50_half_width: float | None = None
     p95_half_width: float | None = None
@@ -77,8 +84,10 @@ class _ProfileSeries:
 
 @dataclass(frozen=True, slots=True)
 class _TimingEvent:
+    code: str
+    canonical_angle_deg: float
+    display_angle_deg: float
     label: str
-    display_deg: float
     color: str
     anchor: str
 
@@ -99,9 +108,17 @@ class _ProfileMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class _OverlapBand:
+    lift_in: float
+    start_display_angle_deg: float
+    end_display_angle_deg: float
+    degrees: float
+
+
+@dataclass(frozen=True, slots=True)
 class _FullCycleEvent:
     code: str
-    crank_deg: float
+    canonical_angle_deg: float
     color: str
 
 
@@ -117,13 +134,14 @@ def render_valve_lift_svg(
     full_lift_profiles = _profiles_for_query(projection, "lift", centered=False)
     y_max = _nice_lift_max(_max_y(full_lift_profiles))
     overlap_rows = _overlap_rows(projection)
+    overlap_band = _overlap_band(projection)
     timing_events = _timing_events(projection)
     full_cycle_events = _full_cycle_timing_events(projection)
     profile_metrics = _profile_metrics(projection)
     warnings = _validation_warnings(projection, profile_metrics)
 
     svg_parts = _svg_header(title)
-    svg_parts.extend(_lift_panel_svg(lift_profiles, legend, y_max, timing_events, overlap_rows))
+    svg_parts.extend(_lift_panel_svg(lift_profiles, legend, y_max, timing_events, overlap_rows, overlap_band))
     svg_parts.extend(_derivative_stack_svg(projection, legend))
     svg_parts.extend(_full_cycle_overview_svg(full_lift_profiles, full_cycle_events))
     svg_parts.extend(_summary_panel_svg(projection, overlap_rows, profile_metrics, warnings))
@@ -190,20 +208,22 @@ def _segment_points(
         raw_y = point.get("value")
         if not isinstance(raw_y, int | float):
             continue
-        crank_deg = _float_field(point, "crank_deg")
-        display_deg = _display_deg(crank_deg)
-        if centered and not _in_centered_window(display_deg):
+        canonical_angle_deg = _float_field(point, "crank_deg")
+        display_angle_deg = _display_deg(canonical_angle_deg)
+        if centered and not _in_centered_window(display_angle_deg):
             continue
         points.append(
             _Point(
-                display_deg=display_deg if centered else crank_deg,
-                crank_deg=crank_deg,
+                canonical_angle_deg=canonical_angle_deg,
+                display_angle_deg=display_angle_deg,
                 y_value=float(raw_y),
                 p50_half_width=_confidence_half_width(point, "p50_half_width"),
                 p95_half_width=_confidence_half_width(point, "p95_half_width"),
             )
         )
-    return tuple(sorted(points, key=lambda candidate: candidate.display_deg))
+    if centered:
+        return tuple(sorted(points, key=lambda candidate: candidate.display_angle_deg))
+    return tuple(sorted(points, key=lambda candidate: candidate.canonical_angle_deg))
 
 
 def _svg_header(title: str) -> list[str]:
@@ -218,7 +238,7 @@ def _svg_header(title: str) -> list[str]:
         f'<text x="24" y="38" font-family="Arial, sans-serif" font-size="28" '
         f'font-weight="700" fill="#0f172a">{safe_title}</text>',
         '<text x="24" y="64" font-family="Arial, sans-serif" font-size="14" '
-        'fill="#475569">Primary engineering view: 0-360 crank-degree overlap window; 180 = TDC overlap</text>',
+        'fill="#475569">Primary engineering view: -180 to +180 crank degrees; 0 = TDC overlap</text>',
     ]
 
 
@@ -228,10 +248,11 @@ def _lift_panel_svg(
     y_max: float,
     timing_events: Sequence[_TimingEvent],
     overlap_rows: Sequence[_OverlapRow],
+    overlap_band: _OverlapBand,
 ) -> list[str]:
     panel = _Panel(_LIFT_TOP, _LIFT_HEIGHT)
     parts = _panel_frame_svg(panel, "Lift (in)")
-    parts.extend(_overlap_band_svg(panel, overlap_rows))
+    parts.extend(_overlap_band_svg(panel, overlap_band))
     parts.extend(_threshold_lines_svg(panel, y_max))
     parts.extend(_x_grid_svg(panel, major=True))
     parts.extend(_y_ticks_svg(panel, 0.0, y_max, precision=3))
@@ -241,7 +262,7 @@ def _lift_panel_svg(
     for profile in profiles:
         parts.extend(_series_svg(profile, legend, 0.0, y_max, panel, stroke_width=2.8))
     parts.extend(_timing_event_svg(timing_events, panel))
-    parts.append(_x_axis_label_svg(panel, "Overlap-centered crank window (deg; 180 = TDC overlap)"))
+    parts.append(_x_axis_label_svg(panel, "Crank angle relative to TDC overlap (deg)"))
     return parts
 
 
@@ -307,11 +328,12 @@ def _full_cycle_overview_svg(
                     'stroke-opacity="0.70" stroke-linecap="round" stroke-linejoin="round"/>'
                 )
     for event in events:
-        x_pos = _full_x_px(event.crank_deg)
+        x_pos = _full_x_px(event.canonical_angle_deg)
         parts.append(
             f'<line x1="{x_pos:.2f}" y1="{panel.top:.0f}" x2="{x_pos:.2f}" '
             f'y2="{panel.top + panel.height:.0f}" stroke="{event.color}" stroke-width="1.1" '
-            f'stroke-dasharray="4 4" data-event="{event.code}"/>'
+            f'stroke-dasharray="4 4" data-event="{event.code}" '
+            f'data-canonical-angle-deg="{event.canonical_angle_deg:.1f}"/>'
         )
         parts.append(
             f'<text x="{x_pos:.2f}" y="{panel.top + 11:.0f}" text-anchor="middle" '
@@ -354,7 +376,7 @@ def _legend_svg(legend: Mapping[str, object], schema: str) -> list[str]:
         '<text x="40" y="924" font-family="Arial, sans-serif" font-size="12" fill="#1e293b">'
         'Peak lift 0.360 in, cold lash 0.006/0.008 in</text>',
         '<text x="40" y="944" font-family="Arial, sans-serif" font-size="12" fill="#1e293b">'
-        'Primary view: 0-360, 180 = TDC overlap</text>',
+        'Primary view: -180 to +180, 0 = TDC overlap</text>',
         '<rect x="396" y="856" width="520" height="118" rx="6" fill="#ffffff" stroke="#cbd5e1"/>',
         '<text x="412" y="880" font-family="Arial, sans-serif" font-size="13" font-weight="700" '
         'fill="#0f172a">Legend / Provenance</text>',
@@ -385,7 +407,7 @@ def _panel_frame_svg(panel: _Panel, label: str) -> list[str]:
     if panel.top == _LIFT_TOP:
         parts.append(
             f'<text x="{_x_px(_TDC_DISPLAY_DEG):.2f}" y="{panel.top + 18:.0f}" text-anchor="middle" '
-            'font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#334155">180 TDC</text>'
+            'font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#334155">0 TDC</text>'
         )
     return parts
 
@@ -400,7 +422,7 @@ def _x_grid_svg(panel: _Panel, *, major: bool) -> list[str]:
             f'y2="{panel.top + panel.height:.0f}" stroke="{stroke}"/>'
         )
         if major and display_deg % 45 == 0:
-            label = "180 TDC" if display_deg == int(_TDC_DISPLAY_DEG) else f"{display_deg:d}"
+            label = "0 TDC" if display_deg == int(_TDC_DISPLAY_DEG) else f"{display_deg:+d}"
             parts.append(
                 f'<text x="{x_pos:.2f}" y="{panel.top + panel.height + 20:.0f}" text-anchor="middle" '
                 f'font-family="Arial, sans-serif" font-size="11" fill="#334155">{label}</text>'
@@ -449,31 +471,34 @@ def _threshold_lines_svg(panel: _Panel, y_max: float) -> list[str]:
     return parts
 
 
-def _overlap_band_svg(panel: _Panel, overlap_rows: Sequence[_OverlapRow]) -> list[str]:
-    overlap_050 = next((row.degrees for row in overlap_rows if abs(row.lift_in - 0.050) < 1e-9), 0.0)
-    half_width = max(overlap_050 / 2.0, 0.0)
-    x_left = _x_px(_TDC_DISPLAY_DEG - half_width)
-    width = _x_px(_TDC_DISPLAY_DEG + half_width) - x_left
+def _overlap_band_svg(panel: _Panel, overlap_band: _OverlapBand) -> list[str]:
+    x_left = _x_px(overlap_band.start_display_angle_deg)
+    width = _x_px(overlap_band.end_display_angle_deg) - x_left
     return [
         f'<rect x="{x_left:.2f}" y="{panel.top:.0f}" width="{width:.2f}" height="{panel.height:.0f}" '
-        'fill="#e2e8f0" fill-opacity="0.55" stroke="none"/>',
+        'fill="#e2e8f0" fill-opacity="0.55" stroke="none" '
+        f'data-overlap-threshold="{overlap_band.lift_in:.3f}" '
+        f'data-display-start-deg="{overlap_band.start_display_angle_deg:.1f}" '
+        f'data-display-end-deg="{overlap_band.end_display_angle_deg:.1f}"/>',
         f'<text x="{_x_px(_TDC_DISPLAY_DEG):.2f}" y="{panel.top + 32:.0f}" text-anchor="middle" '
         'font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0f172a">'
         f'OVERLAP @ 0.050 in</text>',
         f'<text x="{_x_px(_TDC_DISPLAY_DEG):.2f}" y="{panel.top + 52:.0f}" text-anchor="middle" '
         'font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#0f172a">'
-        f'{overlap_050:.1f} deg</text>',
+        f'{overlap_band.degrees:.1f} deg</text>',
     ]
 
 
 def _timing_event_svg(events: Sequence[_TimingEvent], panel: _Panel) -> list[str]:
     parts = []
     for event in events:
-        x_pos = _x_px(event.display_deg)
+        x_pos = _x_px(event.display_angle_deg)
         parts.append(
             f'<line x1="{x_pos:.2f}" y1="{panel.top:.0f}" x2="{x_pos:.2f}" '
             f'y2="{panel.top + panel.height:.0f}" stroke="{event.color}" stroke-width="1.3" '
-            'stroke-dasharray="5 5"/>'
+            f'stroke-dasharray="5 5" data-primary-event="{event.code}" '
+            f'data-canonical-angle-deg="{event.canonical_angle_deg:.1f}" '
+            f'data-display-angle-deg="{event.display_angle_deg:.1f}"/>'
         )
         text_y = panel.top + (88.0 if event.anchor == "top" else panel.height - 18.0)
         parts.append(
@@ -702,7 +727,7 @@ def _provenance_legend_svg(legend: Mapping[str, object]) -> list[str]:
 
 def _legend_notes_svg() -> list[str]:
     notes = (
-        "0-360 view; 180 = TDC overlap",
+        "Negative = BTDC overlap; positive = ATDC overlap",
         "Solid/dashed/dotted = measured/inferred/extrapolated",
         "Bands show 95% and 50% confidence",
         "Dashed markers are hard @0.050 in crossings",
@@ -719,14 +744,18 @@ def _timing_events(projection: Mapping[str, object]) -> tuple[_TimingEvent, ...]
     events = _hard_timing_event_degrees(projection)
     return (
         _TimingEvent(
-            f'IO @ 0.050 in {_display_deg(events["IO"]):.1f} deg',
+            "IO",
+            events["IO"],
             _display_deg(events["IO"]),
+            f'IO @ 0.050 in {_display_deg(events["IO"]):+.1f} deg',
             "#2563eb",
             "top",
         ),
         _TimingEvent(
-            f'EC @ 0.050 in {_display_deg(events["EC"]):.1f} deg',
+            "EC",
+            events["EC"],
             _display_deg(events["EC"]),
+            f'EC @ 0.050 in {_display_deg(events["EC"]):+.1f} deg',
             "#dc2626",
             "bottom",
         ),
@@ -793,6 +822,18 @@ def _overlap_rows(projection: Mapping[str, object]) -> tuple[_OverlapRow, ...]:
             )
         )
     return tuple(rows)
+
+
+def _overlap_band(projection: Mapping[str, object]) -> _OverlapBand:
+    events = _hard_timing_event_degrees(projection)
+    start_display_angle = _display_deg(events["IO"])
+    end_display_angle = _display_deg(events["EC"])
+    return _OverlapBand(
+        lift_in=0.050,
+        start_display_angle_deg=start_display_angle,
+        end_display_angle_deg=end_display_angle,
+        degrees=end_display_angle - start_display_angle,
+    )
 
 
 def _profile_metrics(projection: Mapping[str, object]) -> _ProfileMetrics:
@@ -897,7 +938,7 @@ def _path_data(
 ) -> str:
     commands = [
         f"{'M' if index == 0 else 'L'} "
-        f"{(_full_x_px(point.display_deg) if full_cycle else _x_px(point.display_deg)):.2f} "
+        f"{(_full_x_px(point.canonical_angle_deg) if full_cycle else _x_px(point.display_angle_deg)):.2f} "
         f"{_y_px(point.y_value, y_min, y_max, panel):.2f}"
         for index, point in enumerate(points)
     ]
@@ -920,12 +961,12 @@ def _band_path_data(
     if len(band_points) < 2:
         return ""
     upper = [
-        f"{'M' if index == 0 else 'L'} {_x_px(point.display_deg):.2f} "
+        f"{'M' if index == 0 else 'L'} {_x_px(point.display_angle_deg):.2f} "
         f"{_y_px(point.y_value + half_width, y_min, y_max, panel):.2f}"
         for index, (point, half_width) in enumerate(band_points)
     ]
     lower = [
-        f"L {_x_px(point.display_deg):.2f} "
+        f"L {_x_px(point.display_angle_deg):.2f} "
         f"{_y_px(point.y_value - half_width, y_min, y_max, panel):.2f}"
         for point, half_width in reversed(band_points)
     ]
@@ -933,14 +974,11 @@ def _band_path_data(
 
 
 def _display_deg(crank_deg: float) -> float:
-    normalized = crank_deg % _CYCLE_DEGREES
-    if normalized >= _OVERLAP_WINDOW_START_DEG:
-        return normalized - _OVERLAP_WINDOW_START_DEG
-    return normalized + (_CYCLE_DEGREES - _OVERLAP_WINDOW_START_DEG)
+    return canonical_to_overlap_display(crank_deg)
 
 
 def _in_centered_window(display_deg: float) -> bool:
-    return _MAIN_X_MIN <= display_deg <= _MAIN_X_MAX
+    return is_primary_overlap_display_angle(display_deg)
 
 
 def _x_px(display_deg: float) -> float:
