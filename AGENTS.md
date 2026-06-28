@@ -123,3 +123,16 @@ analysis cannot import the source layer. Keep it green.
 `docs/operator/workflows/` preserve how the architecture was produced. They may
 contain branch-specific or rejected ideas. Do not treat them as current
 instructions without checking the synthesis docs and decision log.
+
+<!-- BEGIN PROXIMAL PLANE TRACKING -->
+## Plane Tracking
+
+This repository is represented in the local/private Plane workspace `Proximal`.
+
+- Plane project: `Cam Analyzer` (`CAMANA`)
+- Plane URL: `https://proximal.tail0ecc2e.ts.net:10000/`
+- GitHub repo: `https://github.com/halbritt/cam-analyzer`
+- Use Plane work items for multi-agent planning, claims, submitted artifacts, reviews, and acceptance decisions.
+- When updating Plane, include the repo, branch/worktree, `run_id`, `base_sha`, artifact links, verification evidence, and authority scope in the work item description or comments.
+- Do not commit Plane API tokens. Local tokens and MCP env files live outside git under `~/.config/plane/`.
+<!-- END PROXIMAL PLANE TRACKING -->
