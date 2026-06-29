@@ -130,6 +130,7 @@ instructions without checking the synthesis docs and decision log.
 This repository is represented in the local/private Plane workspace `Proximal`.
 
 - Plane project: `Cam Analyzer` (`CAMANA`)
+- Issue tracker: Plane (`Proximal` workspace), project `Cam Analyzer` (`CAMANA`).
 - Plane URL: `https://proximal.tail0ecc2e.ts.net:10000/`
 - GitHub repo: `https://github.com/halbritt/cam-analyzer`
 - Use Plane work items for multi-agent planning, claims, submitted artifacts, reviews, and acceptance decisions.
